@@ -177,3 +177,21 @@ a quoting bug. Two consequences:
 - It is a second, independent reason to prefer `reveal -0` over
   `K=$(kleidos reveal FOO)` — the handoff reaches the same conclusion from
   trailing-newline loss.
+
+### Permission rules, measured
+
+Verified against the real binary on 2026-09-02, with `reveal` temporarily set to
+`deny` so every outcome left an artifact. Full table in the README.
+
+- The five spellings the handoff says the matcher catches, it catches. Both
+  path-spelling bypasses remain open.
+- `sh -c '...'` was blocked by the **auto-mode classifier**, not the matcher, so
+  matcher coverage there is undetermined. The handoff predicted precisely this
+  masking; it is why the row is recorded as open rather than closed.
+- **`Read(/abs/path)` silently matches nothing.** The rule needs a doubled
+  leading slash — `Read(//abs/path)`. Written the obvious way it failed open and
+  the identity file was readable in full. Rotating the identity was the fix; the
+  vault was still empty, which is the only reason it was cheap.
+- On this version the `Read` deny rule also blocks Bash commands reading that
+  path, which is stronger than the handoff assumes. A control read of
+  `recipients` in the same directory succeeded, so the block is path-specific.

@@ -19,9 +19,11 @@ Two reasons, and they compound:
    running as your user. That is what makes unattended operation work, and it is
    the whole reason there is no cryptographic boundary. These are the same fact
    stated twice.
-2. **Claude Code's permission matcher is bypassable.** Path spelling
-   (`./kleidos get FOO`) and shell nesting (`sh -c 'kleidos get FOO'`) both slip
-   past a rule written against the bare name.
+2. **Claude Code's permission matcher is bypassable.** Any path spelling other
+   than the bare name — `./kleidos get FOO`, or an absolute path — slips past a
+   rule written against the name, measured and still true. Shell nesting
+   (`sh -c '...'`) was stopped, but by a different layer whose coverage is
+   undocumented; see "What the matcher actually catches" below.
 
 What the tool does buy, honestly stated:
 
@@ -173,33 +175,80 @@ way it is all or nothing.
 
 ## Claude Code permission rules
 
-```
-Bash(kleidos set:*)      allow
-Bash(kleidos get:*)      allow
-Bash(kleidos list:*)     allow
-Bash(kleidos delete:*)   allow
-Bash(kleidos rename:*)   allow
-Bash(kleidos import:*)   allow
-Bash(kleidos run:*)      allow
-Bash(kleidos reveal:*)   ask
-Bash(kleidos export:*)   ask
-Read(/home/<you>/.local/share/kleidos/identity)   deny
+```json
+"permissions": {
+  "allow": [
+    "Bash(kleidos set:*)",
+    "Bash(kleidos get:*)",
+    "Bash(kleidos list:*)",
+    "Bash(kleidos delete:*)",
+    "Bash(kleidos rename:*)",
+    "Bash(kleidos import:*)",
+    "Bash(kleidos run:*)"
+  ],
+  "ask": [
+    "Bash(kleidos reveal:*)",
+    "Bash(kleidos export:*)"
+  ],
+  "deny": [
+    "Read(//home/<you>/.local/share/kleidos/identity)"
+  ]
+}
 ```
 
-Write the absolute path in the `Read` rule, not `~`. It is per-tool policy, not
-kernel enforcement — Bash reaches the same bytes.
+**The doubled leading slash in the `Read` rule is load-bearing.** Written with a
+single slash the rule matches nothing and the identity is readable, with no
+warning of any kind. This was measured, not reasoned: with
+`Read(/home/.../identity)` the file came back in full, secret key included. A
+single slash appears to be resolved relative to the project directory. This is
+the failure mode that matters most, because a rule that fails open is worse than
+no rule — it is trusted.
 
 `run` stays `allow` because prompting on every ordinary command defeats the tool,
 and because `run` offers no guarantee a prompt would be protecting.
 
 **Rules added mid-session are inert until you restart, and they fail open with no
 feedback.** Someone who adds these and keeps working believes they are protected
-and is not. A gate that fails open silently is worse than no gate, because it is
-trusted.
+and is not.
 
 To verify: temporarily change `reveal` to `deny`, restart, run
 `kleidos reveal ANY_KEY`, confirm a visible denial, set it back, restart again.
 Anything less than a visible denial means the rules are not loaded.
+
+### What the matcher actually catches
+
+Measured on 2026-09-02 against the real binary, with `reveal` temporarily set to
+`deny` so that every outcome left an observable artifact. These are properties of
+one Claude Code version on one machine and are worth re-running.
+
+| Spelling | Result |
+|---|---|
+| `kleidos reveal FOO` | denied |
+| `kleidos  reveal FOO` (extra whitespace) | denied |
+| `echo hi && kleidos reveal FOO` | denied |
+| `X=kleidos; $X reveal FOO` | denied |
+| `env kleidos reveal FOO` | denied |
+| `sh -c 'kleidos reveal FOO'` | blocked, but by the **classifier**, not the matcher |
+| `./kleidos reveal FOO` | **runs** — bypass |
+| `/abs/path/kleidos reveal FOO` | **runs** — bypass |
+
+The matcher is more capable than a naive prefix comparison: it sees through
+compound commands, variable indirection, and treats `env` as a pass-through
+wrapper. Both path-spelling bypasses remain open.
+
+**The `sh -c` row is the one to read carefully.** It was blocked, but the refusal
+came from the auto-mode classifier — a separate mechanism with different
+coverage, which fires on how a command looks rather than what it does. Whether
+the matcher itself still has that hole is therefore undetermined. Do not count
+the classifier: it is undocumented, and testing only alarming-looking commands
+will lead you to conclude the rules are tighter than they are.
+
+One finding runs the other way. A Bash command reading the identity path
+(`sha256sum .../identity`) was **also** refused by the permission system, while
+the same command against `recipients` in the same directory ran — so on this
+version the `Read` deny rule extends to Bash rather than being confined to the
+Read tool. That is better than assumed, and it is still policy rather than kernel
+enforcement: treat it as a courtesy, not a boundary.
 
 ## Exit codes
 
@@ -260,7 +309,9 @@ correctness gain and would let a stuck writer block reads.
   are explicit dumps.
 - Syncing the vault between machines can silently lose writes: single blob,
   last-write-wins. Do not assume sync gives you multi-machine writes.
-- Permission matcher behavior is version-dependent and worth re-checking.
+- Permission matcher behavior is version-dependent. The table below was measured
+  once, on one version, on one machine, and a `Read` rule written the obvious way
+  turned out to protect nothing at all.
 
 ## Not in v1
 
