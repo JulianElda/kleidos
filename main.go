@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 
 	"kleidos/internal/cmd"
 	"kleidos/internal/errs"
@@ -35,6 +36,12 @@ Values are never taken as arguments: argv is world-readable via /proc.
 `
 
 func main() {
+	// Refuse to dump core. One syscall, and it buys more than zeroing does: a
+	// core file would contain every plaintext the process ever held, on disk,
+	// outside the age envelope. Best-effort -- if it fails there is nothing
+	// useful to say about it.
+	_ = syscall.Setrlimit(syscall.RLIMIT_CORE, &syscall.Rlimit{Cur: 0, Max: 0})
+
 	os.Exit(dispatch(os.Args[1:]))
 }
 
