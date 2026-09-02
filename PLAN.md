@@ -52,7 +52,9 @@ A separate stage because one green run proves nothing — it is a race.
 - 50 concurrent writers x 20 runs on ext4 under `/home` (**not** `/tmp`, which is
   tmpfs here: `fsync` there succeeds without doing anything).
 - Assert all 50 keys survive every run, and zero leftover temp files.
-- Assert `.bak` shares an inode with the pre-rename vault; link count 1 -> 2 -> 1.
+- Assert `.bak` shares an inode with the pre-rename vault, and that it still
+  decrypts to the previous contents. The transient link count of 2 is not
+  observable from outside the write; a shared inode implies it.
 - Run the deliberately broken-lock variant (unlink the lock after release) and
   confirm the count actually drops on this filesystem, rather than assuming it.
 
