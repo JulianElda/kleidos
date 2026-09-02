@@ -137,66 +137,9 @@ boundary, and it costs unattended operation to get it.
 
 ---
 
-## Measured on this machine
+## Measured results
 
-Recorded here rather than silently absorbed, per the handoff's instruction to
-trust the machine and note the disagreement.
-
-| | reference machine | here (Linux 7.1.11, ext4, nvme) |
-|---|---|---|
-| 50 writers x 20 runs, sound lock | 50/50 every run, no temp files | same |
-| broken-lock variant | lost on **every one** of 20 runs, 36-64% | lost in **11 of 20** runs, worst kept 22/50 |
-| `link: file exists` TOCTOU under broken lock | observed | observed, 1-2 writers per losing run |
-| `shellQuote` fuzzing | ~1.2M execs, no failures | 18.0M execs in 90s, no failures |
-| `shellQuote` corpus x real shells | 18 cases x 4 modes x dash, bash | 20 cases x 3 modes x dash, bash, plus 2000 random values per shell |
-
-The broken-lock variant loses less *often* here, but when it loses it loses just
-as hard. The mechanism reproduces exactly; only the race window differs, which is
-what you would expect from a faster disk. It is still demonstrably load-bearing,
-which is the only thing the test needs to establish.
-
-One consequence: because it fails on roughly half of runs rather than all of
-them, the control needs the full 20 runs to be trustworthy, so it skips under
-`-short` rather than reporting a false pass at two runs.
-
-### One finding beyond the handoff
-
-dash corrupts certain high bytes on **command substitution into a variable**,
-injecting its internal `CTLESC` (0x81) before 0x82, 0x8b and 0x8e:
-
-```
-dash -c 's=$(printf "a\302\202b"); printf %s "$s"'   ->  61 c2 81 82 62
-bash, same command                                    ->  61 c2 82 62
-```
-
-There is no `eval` and no quoting involved, so this is dash's own behaviour, not
-a quoting bug. Two consequences:
-
-- `s=$(kleidos export); eval "$s"` is excluded from the supported substitution
-  modes, and the test suite records why.
-- It is a second, independent reason to prefer `reveal -0` over
-  `K=$(kleidos reveal FOO)` — the handoff reaches the same conclusion from
-  trailing-newline loss.
-
-### Permission rules, measured
-
-Verified against the real binary on 2026-09-02, with `reveal` temporarily set to
-`deny` so every outcome left an artifact. Full table in the README.
-
-- The five spellings the handoff says the matcher catches, it catches. Both
-  path-spelling bypasses remain open.
-- `sh -c '...'` was blocked by the **auto-mode classifier**, not the matcher, so
-  matcher coverage there is undetermined. The handoff predicted precisely this
-  masking; it is why the row is recorded as open rather than closed.
-- **`Read(/abs/path)` silently matches nothing.** The rule needs a doubled
-  leading slash — `Read(//abs/path)`. Written the obvious way it failed open and
-  the identity file was readable in full. Rotating the identity was the fix; the
-  vault was still empty, which is the only reason it was cheap.
-- On this version the `Read` deny rule also blocks Bash commands reading that
-  path, which is stronger than the handoff assumes. A control read of
-  `recipients` in the same directory succeeded, so the block is path-specific.
-- **`ask` approvals do not persist.** Two identical consecutive invocations both
-  prompted, matching the handoff. The `reveal`-as-a-verb restructuring therefore
-  keeps its full justification: an `ask` on `get` would prompt on every read.
-  Unverifiable from inside a session — an `ask` leaves no observable artifact, so
-  a human had to watch the screen. Only denials are machine-checkable.
+All measurements taken during and after this build — the write-path stress runs,
+the `shellQuote` corpus and fuzzing, the dash byte-corruption finding, and the
+permission-matcher matrix — live in [claude-insights.md](claude-insights.md),
+alongside the design rationale they justify.
