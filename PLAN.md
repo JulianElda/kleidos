@@ -134,3 +134,21 @@ boundary, and it costs unattended operation to get it.
 - **`[]byte` discipline stops at the edges.** `encoding/json` produces
   uncontrollable `string` copies; half-implementing the stricter rule gives the
   appearance of a guarantee with none of the substance.
+
+---
+
+## Measured on this machine
+
+Recorded here rather than silently absorbed, per the handoff's instruction to
+trust the machine and note the disagreement.
+
+| | reference machine | here (Linux 7.1.11, ext4, nvme) |
+|---|---|---|
+| 50 writers x 20 runs, sound lock | 50/50 every run, no temp files | same |
+| broken-lock variant | lost on **every one** of 20 runs, 36-64% | lost in **11 of 20** runs, worst kept 22/50 |
+| `link: file exists` TOCTOU under broken lock | observed | observed, 1-2 writers per losing run |
+
+The broken-lock variant loses less *often* here, but when it loses it loses just
+as hard. The mechanism reproduces exactly; only the race window differs, which is
+what you would expect from a faster disk. It is still demonstrably load-bearing,
+which is the only thing the test needs to establish.

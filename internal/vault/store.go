@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"filippo.io/age"
@@ -17,6 +18,7 @@ import (
 type Store struct {
 	dir    string
 	ids    []age.Identity
+	mu     sync.Mutex      // guards recips
 	recips []age.Recipient // loaded lazily; only writes need them
 }
 
@@ -201,6 +203,8 @@ func (s *Store) save(v *Vault) error {
 // all of them, which is what makes a break-glass identity and a second machine
 // work.
 func (s *Store) recipients() ([]age.Recipient, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.recips != nil {
 		return s.recips, nil
 	}
