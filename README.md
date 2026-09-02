@@ -243,6 +243,18 @@ the matcher itself still has that hole is therefore undetermined. Do not count
 the classifier: it is undocumented, and testing only alarming-looking commands
 will lead you to conclude the rules are tighter than they are.
 
+**`ask` approvals do not persist within a session.** Two identical consecutive
+invocations of `kleidos reveal FOO` both prompted. This is why the plaintext
+dumps are separate verbs rather than a `--reveal` flag on `get`: with no
+persistence, gating `get` as `ask` would prompt on every single read, and the
+predictable response is to route around it — with the path-spelling bypass
+sitting right there. Ordinary reads never prompt; the dumps do.
+
+Note that this particular fact is not verifiable from inside a session. An `ask`
+prompt leaves no artifact an agent can observe, so it took a human watching the
+screen. Only denials are machine-checkable, which is why the table above was
+measured with `deny` rules.
+
 One finding runs the other way. A Bash command reading the identity path
 (`sha256sum .../identity`) was **also** refused by the permission system, while
 the same command against `recipients` in the same directory ran — so on this

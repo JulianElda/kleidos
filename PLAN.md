@@ -195,3 +195,8 @@ Verified against the real binary on 2026-09-02, with `reveal` temporarily set to
 - On this version the `Read` deny rule also blocks Bash commands reading that
   path, which is stronger than the handoff assumes. A control read of
   `recipients` in the same directory succeeded, so the block is path-specific.
+- **`ask` approvals do not persist.** Two identical consecutive invocations both
+  prompted, matching the handoff. The `reveal`-as-a-verb restructuring therefore
+  keeps its full justification: an `ask` on `get` would prompt on every read.
+  Unverifiable from inside a session — an `ask` leaves no observable artifact, so
+  a human had to watch the screen. Only denials are machine-checkable.
