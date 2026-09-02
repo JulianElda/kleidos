@@ -3,16 +3,75 @@
 // resolves.
 package cmd
 
-import "errors"
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
 
-var errTODO = errors.New("not implemented")
+	"kleidos/internal/vault"
+)
 
-func Set(args []string) error    { return errTODO }
-func Get(args []string) error    { return errTODO }
-func Reveal(args []string) error { return errTODO }
-func List(args []string) error   { return errTODO }
-func Delete(args []string) error { return errTODO }
-func Rename(args []string) error { return errTODO }
-func Run(args []string) error    { return errTODO }
-func Export(args []string) error { return errTODO }
-func Import(args []string) error { return errTODO }
+// openStore resolves the vault directory and loads the identity.
+func openStore() (*vault.Store, error) {
+	dir, err := vault.Dir()
+	if err != nil {
+		return nil, err
+	}
+	return vault.Open(dir)
+}
+
+// parseFlags parses args for a verb and returns its positional arguments.
+//
+// Flags may appear after positionals -- `kleidos set KEY --stdin` is the
+// documented spelling, and the stdlib flag package stops at the first non-flag
+// argument. Everything after a literal "--" is positional, never a flag.
+func parseFlags(name, usage string, args []string, bind func(*flag.FlagSet)) ([]string, error) {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() { fmt.Fprintln(os.Stderr, usage) }
+	if bind != nil {
+		bind(fs)
+	}
+
+	var literal []string
+	for i, a := range args {
+		if a == "--" {
+			literal, args = args[i+1:], args[:i]
+			break
+		}
+	}
+
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return nil, errHelp
+			}
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			break
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
+	return append(positional, literal...), nil
+}
+
+// errHelp signals that usage was printed deliberately.
+var errHelp = errors.New("help requested")
+
+// IsHelp reports whether err came from an explicit -h.
+func IsHelp(err error) bool { return errors.Is(err, errHelp) }
+
+// flushTo writes b and checks the error. A silently truncated secret is worse
+// than none, so every plaintext write path goes through here.
+func flushTo(w io.Writer, b []byte) error {
+	if _, err := w.Write(b); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
+	return nil
+}

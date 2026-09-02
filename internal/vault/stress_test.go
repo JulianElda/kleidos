@@ -134,7 +134,14 @@ func (s *Store) brokenUpdate(fn func(*Vault) error) error {
 // worth knowing: it would mean the concurrency test above proves less than it
 // appears to.
 func TestBrokenLockActuallyLoses(t *testing.T) {
-	n := runs(t)
+	// This machine loses on roughly half of runs rather than on every run, so the
+	// control needs the full run count to be reliable. At two runs it reports a
+	// false pass often enough to be worse than not running.
+	if testing.Short() {
+		t.Skip("the broken-lock control needs the full run count; it loses in " +
+			"roughly half of runs on this machine, not all of them")
+	}
+	n := fullRuns
 	worst := writers
 	lost := 0
 

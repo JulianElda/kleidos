@@ -80,6 +80,10 @@ func dispatch(args []string) int {
 	}
 
 	if err != nil {
+		// A verb's own -h already printed its usage.
+		if cmd.IsHelp(err) {
+			return errs.OK
+		}
 		fmt.Fprintln(os.Stderr, "kleidos:", err)
 		return errs.Code(err)
 	}

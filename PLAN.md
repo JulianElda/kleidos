@@ -152,3 +152,7 @@ The broken-lock variant loses less *often* here, but when it loses it loses just
 as hard. The mechanism reproduces exactly; only the race window differs, which is
 what you would expect from a faster disk. It is still demonstrably load-bearing,
 which is the only thing the test needs to establish.
+
+One consequence: because it fails on roughly half of runs rather than all of
+them, the control needs the full 20 runs to be trustworthy, so it skips under
+`-short` rather than reporting a false pass at two runs.

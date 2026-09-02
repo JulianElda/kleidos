@@ -87,6 +87,31 @@ func (v *Vault) Get(key string) (*Secret, bool) {
 	return s, ok
 }
 
+// Delete removes key, reporting whether it was present.
+func (v *Vault) Delete(key string) bool {
+	if _, ok := v.Secrets[key]; !ok {
+		return false
+	}
+	delete(v.Secrets, key)
+	return true
+}
+
+// Rename moves a secret to a new name, preserving its update time. The value did
+// not change, only its name, and resetting the timestamp would destroy the one
+// staleness signal available. Collision policy is the caller's.
+func (v *Vault) Rename(old, name string) error {
+	s, ok := v.Secrets[old]
+	if !ok {
+		return fmt.Errorf("%w: %s", errs.ErrKeyNotFound, old)
+	}
+	if err := CheckKey(name); err != nil {
+		return err
+	}
+	v.Secrets[name] = s
+	delete(v.Secrets, old)
+	return nil
+}
+
 // Names returns every key, sorted.
 func (v *Vault) Names() []string {
 	names := make([]string, 0, len(v.Secrets))
