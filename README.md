@@ -50,18 +50,34 @@ unset key
 ## Commands
 
 ```
+kleidos run --only K1,K2 -- cmd   exec cmd with those secrets in its environment
 kleidos set KEY [--stdin]         store a value
 kleidos get KEY [KEY...]          print values; terminal only
 kleidos reveal [-0] KEY [KEY...]  print values unconditionally
 kleidos list                      names, update times, fingerprints
 kleidos delete KEY                remove a key
 kleidos rename OLD NEW [--force]  rename, preserving the update time
-kleidos run --only K1,K2 -- cmd   exec cmd with those secrets in its environment
 kleidos export                    emit shell assignments for eval
 kleidos import FILE [--overwrite|--skip-existing]
 ```
 
 Every command needs the identity, including `list`.
+
+### run
+
+```bash
+kleidos run --only DB_USER,DB_PASSWORD -- psql -h localhost
+
+# a command that reads its own env var
+kleidos run --only MYSQL_PWD -- mysql -h db.internal -u appuser mydb
+```
+
+Recommended default use: the secrets reach the command through its
+environment, never `argv` or stdout.
+
+Both `--only` and `--` are required. The child's exit status passes through.
+Values are resolved before the exec, so a missing key stops the command rather
+than starting it with a blank credential.
 
 ### set
 
@@ -105,14 +121,6 @@ The fingerprint is a keyed digest: equal fingerprints mean equal values.
 kleidos rename OLD_NAME NEW_NAME
 kleidos rename OLD_NAME NEW_NAME --force   # overwrite an existing NEW_NAME
 ```
-
-### run
-
-```bash
-kleidos run --only DB_USER,DB_PASSWORD -- psql -h localhost
-```
-
-Both `--only` and `--` are required. The child's exit status passes through.
 
 ### export
 
