@@ -1,5 +1,9 @@
 # kleidos
 
+> Ask, and it shall be given you; seek, and ye shall find; knock, and it shall be opened unto you
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Key/value secrets in a single [age](https://age-encryption.org)-encrypted file,
 for use by by an agent.
 
