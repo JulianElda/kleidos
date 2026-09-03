@@ -13,10 +13,9 @@ import (
 // capturedExec records what Run would have exec'd, instead of replacing the
 // test process.
 type capturedExec struct {
-	path string
-	argv []string
-	env  []string
-	//nolint:unused // called indirectly
+	path   string
+	argv   []string
+	env    []string
 	called bool
 }
 
@@ -67,6 +66,26 @@ func TestRunRequiresOnly(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--only") {
 		t.Fatalf("error should name --only, got: %v", err)
+	}
+}
+
+func TestRunRefusesEmptyValuesAndNamesThemAll(t *testing.T) {
+	dir := seed(t, "REAL", "x")
+	seedRaw(t, dir, "OLD_EMPTY_A", "")
+	seedRaw(t, dir, "OLD_EMPTY_B", "")
+	got := interceptExec(t)
+
+	err := Run([]string{"--only", "OLD_EMPTY_A,REAL,OLD_EMPTY_B", "--", "true"})
+	if !errors.Is(err, errs.ErrEmptyValue) {
+		t.Fatalf("want ErrEmptyValue, got %v", err)
+	}
+	for _, name := range []string{"OLD_EMPTY_A", "OLD_EMPTY_B"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("error should name %s, got: %v", name, err)
+		}
+	}
+	if got.called {
+		t.Fatal("run exec'd with an empty value in the child environment")
 	}
 }
 

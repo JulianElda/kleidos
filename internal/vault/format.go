@@ -49,11 +49,25 @@ func CheckKey(k string) error {
 	return nil
 }
 
-// CheckValue rejects NUL. This is enforced at the write paths -- `set` and
-// `import` -- so that "no value contains NUL" is an invariant every consumer can
-// rely on, rather than a check each consumer must remember. A NUL breaks both a
-// shell variable and an environ entry, so there is no downstream that tolerates it.
+// CheckValue rejects the empty string and NUL. Both are enforced at the write
+// paths -- `set` and `import` -- so that "every stored value is a real,
+// NUL-free value" is an invariant every consumer inherits, rather than a check
+// each consumer must remember.
+//
+// NUL breaks both a shell variable and an environ entry, so no downstream
+// tolerates it. Empty is refused for a different reason: an empty credential is
+// never a credential, so the only ways one reaches a write are a bug upstream or
+// a misuse, and both are worth a loud failure at the moment they happen. Storing
+// one produces a key that is present but unusable, and a consumer that re-execs
+// itself when its credentials are missing from the environment loops forever on
+// an injected empty value. Refusing the write makes that state unreachable.
+//
+// Absence remains a distinct, legitimate state -- Get still reports it -- but
+// "present and empty" is no longer one of the states a vault can be in.
 func CheckValue(v string) error {
+	if v == "" {
+		return errs.ErrEmptyValue
+	}
 	if strings.IndexByte(v, 0) >= 0 {
 		return errs.ErrNUL
 	}
@@ -81,7 +95,11 @@ func (v *Vault) Set(key, value string) error {
 	return nil
 }
 
-// Get reports whether key is present, distinguishing absence from an empty value.
+// Get reports whether key is present. The bool is the whole point: absence is a
+// state a caller may legitimately act on, and collapsing it to a zero value
+// hides it. Nothing stored is empty, so a returned Secret always holds a real
+// value -- unless the vault was written by something that predates CheckValue's
+// non-empty rule, which is why `run` re-checks.
 func (v *Vault) Get(key string) (*Secret, bool) {
 	s, ok := v.Secrets[key]
 	return s, ok

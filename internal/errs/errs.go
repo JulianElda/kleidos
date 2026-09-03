@@ -38,6 +38,12 @@ var (
 	// time so that every downstream consumer -- export, run, reveal -- can rely
 	// on values being NUL-free rather than each re-checking.
 	ErrNUL = errors.New("value contains NUL byte")
+
+	// ErrEmptyValue is the other write-time refusal. An empty credential is not
+	// a credential, so storing one only produces a key that is present and
+	// unusable -- a state no caller can tell from a working one without reading
+	// the value it is not allowed to see.
+	ErrEmptyValue = errors.New("value is empty; kleidos stores only non-empty values")
 )
 
 // Coded wraps an error with an explicit exit status, for the cases that are not

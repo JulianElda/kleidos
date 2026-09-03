@@ -33,18 +33,15 @@ func TestSetStdinPreservesTrailingNewline(t *testing.T) {
 	}
 }
 
-func TestSetStdinEmptyValue(t *testing.T) {
+func TestSetRejectsAnEmptyValue(t *testing.T) {
 	dir := vaultDir(t)
-	if err := setStdin(t, "EMPTY", ""); err != nil {
-		t.Fatal(err)
+	err := setStdin(t, "EMPTY", "")
+	if !errors.Is(err, errs.ErrEmptyValue) {
+		t.Fatalf("want ErrEmptyValue, got %v", err)
 	}
-	// Present with an empty value is a different state from absent.
-	s, ok := read(t, dir).Get("EMPTY")
-	if !ok {
-		t.Fatal("EMPTY should be present")
-	}
-	if s.Value != "" {
-		t.Fatalf("EMPTY = %q, want empty", s.Value)
+	// The vault must not have been created by a rejected write.
+	if got := testenv.TempFiles(t, dir); len(got) != 0 {
+		t.Fatalf("rejected write left temp files: %v", got)
 	}
 }
 

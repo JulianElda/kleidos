@@ -66,3 +66,22 @@ func setStdin(t *testing.T, key, data string) error {
 	withStdin(t, data)
 	return Set([]string{"--stdin", key})
 }
+
+// seedRaw writes a value straight into the vault, bypassing Vault.Set. It is how
+// a test reaches a state the write paths refuse: a vault written by a kleidos
+// that predates a rule, or by something that is not kleidos at all. The store
+// must already exist.
+func seedRaw(t *testing.T, dir, key, value string) {
+	t.Helper()
+	s, err := vault.Open(dir)
+	if err != nil {
+		t.Fatalf("opening store: %v", err)
+	}
+	err = s.Update(func(v *vault.Vault) error {
+		v.Secrets[key] = &vault.Secret{Value: value}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seeding %s: %v", key, err)
+	}
+}

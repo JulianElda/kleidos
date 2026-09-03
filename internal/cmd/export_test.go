@@ -21,12 +21,24 @@ func TestExportEvalsBackToTheSameBytes(t *testing.T) {
 	want := map[string]string{}
 	for i, c := range corpus {
 		key := fmt.Sprintf("K%02d", i)
+		want[key] = c.value
+		if c.value == "" {
+			continue // refused by the write path; seeded below
+		}
 		if err := setStdin(t, key, c.value); err != nil {
 			t.Fatalf("seeding %s: %v", c.name, err)
 		}
-		want[key] = c.value
 	}
-	_ = dir
+	// The corpus holds a value `set` now refuses. Export must still emit it
+	// correctly: a vault written before empty values were refused can hold one,
+	// and failing the whole export over it would make every other secret in the
+	// vault unreachable through this verb. Seeded after the loop above, because
+	// the store has to exist first.
+	for i, c := range corpus {
+		if c.value == "" {
+			seedRaw(t, dir, fmt.Sprintf("K%02d", i), c.value)
+		}
+	}
 
 	out := capture(t)
 	if err := Export(nil); err != nil {

@@ -133,13 +133,35 @@ func childEnv(keys []string, secrets []*vault.Secret) ([]string, error) {
 		}
 	}
 
+	// Values are re-checked here as a backstop against a vault written by
+	// something else: a foreign tool, or a kleidos that predates the non-empty
+	// rule. environ entries are NUL-terminated C strings, so a NUL would truncate
+	// silently or fail with an opaque EINVAL; an empty value is the present-but-
+	// unusable state the write paths exist to prevent, and injecting one is what
+	// sends a self-re-execing consumer into a loop.
+	//
+	// Every offending key is named at once, for the same reason a missing key is:
+	// an older vault can hold several, and fixing them one run at a time is a
+	// sequence of avoidable failures.
+	var bad []string
+	var reason error
 	for i, k := range keys {
-		// environ entries are NUL-terminated C strings, so a NUL would truncate
-		// silently or fail with an opaque EINVAL. The write paths reject NUL, so
-		// this is a backstop against a vault written by something else.
-		if err := vault.CheckValue(secrets[i].Value); err != nil {
-			return nil, fmt.Errorf("%s: %w", k, err)
+		err := vault.CheckValue(secrets[i].Value)
+		if err == nil {
+			continue
 		}
+		// One reason for the whole message. A vault holding both an empty value
+		// and a NUL was not written by kleidos at all, and the fix is the same.
+		if reason == nil {
+			reason = err
+		}
+		bad = append(bad, k)
+	}
+	if reason != nil {
+		return nil, fmt.Errorf("%s: %w", strings.Join(bad, ", "), reason)
+	}
+
+	for i, k := range keys {
 		entry := k + "=" + secrets[i].Value
 		if j, ok := at[k]; ok {
 			fmt.Fprintf(os.Stderr, "kleidos: %s was already set in the environment; the vault value wins\n", k)

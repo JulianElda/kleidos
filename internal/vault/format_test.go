@@ -2,8 +2,11 @@ package vault
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
+
+	"kleidos/internal/errs"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -14,10 +17,6 @@ func TestRoundTrip(t *testing.T) {
 	if err := v.Set("DB_USER", "alice"); err != nil {
 		t.Fatal(err)
 	}
-	if err := v.Set("EMPTY", ""); err != nil {
-		t.Fatal(err)
-	}
-
 	var buf bytes.Buffer
 	if err := v.Encode(&buf); err != nil {
 		t.Fatal(err)
@@ -29,10 +28,6 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if s, ok := got.Get("DB_USER"); !ok || s.Value != "alice" {
 		t.Fatalf("DB_USER round trip: got %+v, ok=%v", s, ok)
-	}
-	// Absence and an empty value are different states.
-	if s, ok := got.Get("EMPTY"); !ok || s.Value != "" {
-		t.Fatalf("EMPTY should be present with an empty value; got %+v, ok=%v", s, ok)
 	}
 	if _, ok := got.Get("NOPE"); ok {
 		t.Fatal("absent key reported present")
@@ -122,5 +117,24 @@ func TestMissingReportsEveryName(t *testing.T) {
 	got := v.Missing([]string{"A", "PRESENT", "B"})
 	if len(got) != 2 || got[0] != "A" || got[1] != "B" {
 		t.Fatalf("want [A B] in request order, got %v", got)
+	}
+}
+
+func TestEmptyValuesAreRefused(t *testing.T) {
+	v, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = v.Set("EMPTY", "")
+	if !errors.Is(err, errs.ErrEmptyValue) {
+		t.Fatalf("want ErrEmptyValue, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "EMPTY") {
+		t.Fatalf("error should name the key, got: %v", err)
+	}
+	// A refused write stores nothing, so present-and-empty is not a state the
+	// vault can be in -- which is what lets a caller treat presence as usable.
+	if _, ok := v.Get("EMPTY"); ok {
+		t.Fatal("a refused write stored the key anyway")
 	}
 }

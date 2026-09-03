@@ -106,19 +106,6 @@ func TestGetIsAllOrNothing(t *testing.T) {
 	}
 }
 
-func TestGetEmptyValueIsNotMissing(t *testing.T) {
-	seed(t, "EMPTY", "")
-	asTerminal(t, true)
-	out := capture(t)
-
-	if err := Get([]string{"EMPTY"}); err != nil {
-		t.Fatalf("present-but-empty must not be treated as absent: %v", err)
-	}
-	if got := out.String(); got != "\n" {
-		t.Fatalf("got %q, want a lone newline", got)
-	}
-}
-
 func TestGetOnAbsentVault(t *testing.T) {
 	vaultDir(t)
 	asTerminal(t, true)
