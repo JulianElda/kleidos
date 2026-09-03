@@ -66,6 +66,113 @@ than a check each consumer must remember.
 than `string` precisely so the failure mode is an error rather than silent
 truncation or a panic.
 
+### Why an empty value is rejected at write time too
+
+An empty credential is not a credential. The only ways one reaches a write are a
+bug upstream or a misuse — a `printf` that produced nothing, a field an API left
+blank — and both are worth failing on at the moment they happen rather than at
+the moment the credential is used.
+
+The cost of storing one is not merely that it is useless. It creates a key that
+is **present but unusable**, and no caller can tell that state from a working one
+without reading a value it is not allowed to see. The consumer-visible failure is
+concrete: a program that re-execs itself under `run` when its credentials are
+missing from the environment gets `K=` injected, finds the variable still empty,
+and re-execs forever. Every consumer that hit this defended against it with a
+private sentinel environment variable, which is a convention eight programs each
+had to invent. Refusing the write makes the state unreachable instead.
+
+So this is the NUL rule again, for a different reason: enforced at `set` and
+`import`, with `run` re-checking as a backstop against a vault written by
+something else — including a kleidos that predates the rule, which is the case
+that will actually occur. The backstop names every offending key at once, because
+an older vault can hold several and fixing them one run at a time is a sequence
+of avoidable failures.
+
+Two deliberate asymmetries:
+
+- **`export` does not refuse a stored empty value**, and emits `K=''` for it.
+  `export` is all-or-nothing over the whole vault, so failing it over one legacy
+  key would make every other secret unreachable through that verb. `run` names
+  its keys, so refusing there costs only the key at fault.
+- **`has` reports it as present.** `has` answers a question about storage; `run`
+  answers one about usability. On a vault written before this rule the two
+  disagree, and that is the honest answer rather than a cleverness in either.
+
+Absence stays a distinct state — `Vault.Get` still returns a bool, and
+`--optional` exists precisely because absence can be legitimate. What no longer
+exists is "present and empty".
+
+### Why existence is answered three ways
+
+Consumers that needed to know whether a key existed had exactly one option, which
+was to grep the human-formatted `list` table. That breaks on a column change,
+silently, and in the safe-looking direction: the key is simply omitted from the
+request and the failure surfaces much later as a missing value.
+
+Three commands answer three different questions, and the split is deliberate:
+
+- **`run --optional K`** — "inject it if it is there." The question is never
+  asked, because the answer only affected the injection. This is the one that
+  deletes the most caller code, and it is the right reach whenever the answer is
+  not used for anything else.
+- **`has K…`** — "does the vault hold what I need?" For when the answer changes
+  what the caller *does*, not just what it injects: provision or skip, fail early
+  or proceed.
+- **`list --names`** — "what is in there?" Enumeration, for set operations and
+  discovery.
+
+`has` prints nothing on stdout and answers with its exit status: 0, or 121 naming
+every absent key on stderr — the same message and status `run` gives, so a caller
+parses one format for both, and an agent needs no parsing at all. An empty stdout
+is also what keeps the verb free of plaintext, and therefore free of an approval
+prompt, permanently. A missing vault stays 122, because a caller that treats an
+unreadable vault as an absent key will provision over a vault it merely failed to
+open. An unstorable key name is an error rather than a report of absence, since
+absence is a legitimate state and "you cannot spell that" is not.
+
+The `list` table is human output and its columns are not a contract; `--names` is
+the contract. That distinction only became load-bearing once programs started
+reading `list`, and it is cheaper to state than to discover.
+
+### Why `--optional` does not weaken `--only`
+
+All-or-nothing reads exist because a username with no password is worse than
+nothing. `--optional` does not touch that: the rule still holds over every key
+the caller did not explicitly declare survivable, and declaring one is a
+deliberate act at the call site, in the same command, visible in the same line.
+
+A key that is present but empty fails under `--optional` as well. Empty is a
+vault written wrong, not a key that is absent, and skipping it would hand the
+child exactly the unset variable it was trying to detect.
+
+### Why `import` grew a NUL-delimited format
+
+The `.env` subset is the right *human* import path and it stays. It is the wrong
+wire format for a program handing over values it cannot regenerate.
+
+The failure is specific. A provisioning consumer receives one-shot credentials
+from a machine it just registered and pipes them into `import`; the values cannot
+be re-fetched. The whole point of the pipe is that they never touch disk. That
+property currently rests on the generated text satisfying a grammar with opinions
+about trailing whitespace, `#`, and quotes — so one stray space from an upstream
+tool fails the import atomically (correctly), the consumer's fallback fires, and
+the plaintext lands in a file after all.
+
+`--null` removes the grammar from the path: NUL delimits records, everything
+after the first `=` is the value verbatim, and there is nothing to quote, trim,
+or escape. NUL is available as a delimiter for exactly the reason it is rejected
+at write time, which is the same argument that made `reveal -0` the
+machine-readable read path.
+
+Diagnostics name the key as well as the location, in both formats. For generated
+input the key is the stable identifier and the line number is noise — worse than
+noise when the input was a pipe, since the stream it refers to no longer exists
+by the time anyone reads the message.
+
+`--stdin` is spelling, not capability: `import /dev/stdin` already worked. It
+matches `set --stdin`, and it keeps `/dev/stdin` out of the documentation.
+
 ### Why `export` quoting is a security surface
 
 The output is `eval`-ed, so a bug there is arbitrary code execution. Single
@@ -89,7 +196,8 @@ it, so any such check would make the command useless for its only purpose.
 
 Children inherit the whole environment, and so do grandchildren. An
 inject-everything default would violate the principle the flag exists to serve,
-so `--only` is required rather than optional.
+so naming keys is required rather than optional — `--only`, or `--optional`, or
+both, but never nothing.
 
 `execve` rather than fork-and-wait gives correct signal handling and exit-code
 propagation for free, and leaves no parent process holding plaintext. Decryption

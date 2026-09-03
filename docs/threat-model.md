@@ -50,6 +50,12 @@ Permission rules are applied per verb: everything that cannot print plaintext is
 and because `run` offers no guarantee a prompt would be protecting: it hands the
 value to a child and has no control after `execve`.
 
+`has` and `list --names` are `allow` for the same reason `list` is: they print no
+plaintext, and `has` prints nothing at all. Both disclose key names and existence
+to anything that can already read the vault, which is no more than `list` already
+discloses and no more than the fingerprints already imply. Both still require the
+identity — all metadata lives inside the ciphertext.
+
 There is a second, independent layer — an auto-mode classifier that fires on how
 a command *looks* rather than on what it does. **Do not count it.** It is
 undocumented, its coverage differs from the matcher's, and during measurement it

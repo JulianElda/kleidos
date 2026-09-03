@@ -43,9 +43,11 @@ internal/vault/
   store.go              age envelope, flock, the atomic write path
 internal/cmd/
   cmd.go                openStore, parseFlags, errHelp, flushTo
-  read.go               lookup (all-or-nothing), emit, emitNUL, stdout seam
+  read.go               lookup (all-or-nothing), lookupSome (--optional),
+                        emit, emitNUL, stdout seam
   <verb>.go             one file per verb, each with a `<verb>Usage` const
   dotenv.go             the strict .env subset parser (used only by import)
+  nullrec.go            the NUL-delimited KEY=value parser (--null), same
   shellquote.go         single-quote escaping for export
 internal/testenv/       scratch dirs and key material, shared by both suites
 ```
@@ -60,13 +62,29 @@ deliberate decision, most of them tested directly.
 
 - **No secret in `argv`, ever.** `/proc/<pid>/cmdline` is world-readable. `set`
   has no positional value argument; `run` puts values in the child's `environ`.
-- **NUL is rejected at write time** (`set`, `import`), so every consumer may
-  assume values are NUL-free. `run` and `shellQuote` re-check only as a backstop
-  against a vault written by something else. Do not relax the write-time check.
+- **NUL and the empty string are rejected at write time** (`set`, `import`), so
+  every consumer may assume a stored value is real and NUL-free. `run` re-checks
+  both, and `shellQuote` re-checks NUL, only as a backstop against a vault
+  written by something else — including a kleidos older than the empty rule. Do
+  not relax the write-time checks. Empty is refused because "present but
+  unusable" is a state no caller can distinguish from a working one, and it is
+  what loops a consumer that re-execs itself on a missing credential.
+- **`export` deliberately does *not* refuse a stored empty value**, and emits
+  `K=''`. It is all-or-nothing over the whole vault, so failing it over one
+  legacy key would make every other secret unreachable through that verb.
 - **Multi-key reads are all-or-nothing.** `lookup` fails on any miss and names
   every absent key. A username with an empty password is the dangerous outcome.
-- **Absent and present-but-empty are different states.** `Vault.Get` returns a
-  bool for exactly this; never collapse it to a zero value.
+  `run --optional` is the one exception, and only over keys the caller named
+  there: absence is not an error for those, but an empty value still is.
+- **Absence is a distinct state, and the only one `Vault.Get`'s bool has to
+  carry.** Never collapse it to a zero value. "Present and empty" is no longer
+  reachable through the write paths; `--optional` and `has` exist because
+  absence, unlike emptiness, is legitimate.
+- **`has` reports storage, `run` reports usability.** On a vault written before
+  the empty rule the two disagree about an empty key, deliberately. `has` prints
+  nothing on stdout — that is what keeps it plaintext-free and approval-free.
+- **The `list` table is human output; `list --names` is the contract.** Programs
+  read `--names`. Columns in the table may change.
 - **`CheckKey` runs at export time too**, not only on write. The left-hand side
   of an `eval`ed assignment is its own injection point.
 - **Reads take no lock.** `rename` is atomic, so a reader gets the old inode or
@@ -136,6 +154,7 @@ Seams to use instead of refactoring for testability — all already in place:
 | `now` | `vault/format.go` | pinning timestamps |
 | `withStdin(t, data)` | `cmd/helper_test.go` | `--stdin` paths |
 | `(*Store).brokenUpdate` | `vault/stress_test.go` | the lock's negative control |
+| `seedRaw(t, dir, k, v)` | `cmd/helper_test.go` | states the write paths refuse |
 
 `TestBrokenLockActuallyLoses` is a control, not a feature test: it asserts the
 unlocked variant *does* lose writes, and fails if it does not. Should it start

@@ -54,15 +54,17 @@ unset key
 ## Commands
 
 ```
-kleidos run --only K1,K2 -- cmd   exec cmd with those secrets in its environment
+kleidos run --only K1,K2 [--optional K3] -- cmd
+                                  exec cmd with those secrets in its environment
+kleidos has KEY [KEY...]          exit 0 if every key exists; prints nothing
 kleidos set KEY [--stdin]         store a value
 kleidos get KEY [KEY...]          print values; terminal only
 kleidos reveal [-0] KEY [KEY...]  print values unconditionally
-kleidos list                      names, update times, fingerprints
+kleidos list [--names]            names, update times, fingerprints
 kleidos delete KEY                remove a key
 kleidos rename OLD NEW [--force]  rename, preserving the update time
 kleidos export                    emit shell assignments for eval
-kleidos import FILE [--overwrite|--skip-existing]
+kleidos import FILE|--stdin [--null] [--overwrite|--skip-existing]
 ```
 
 Every command needs the identity, including `list`.
@@ -74,14 +76,32 @@ kleidos run --only DB_USER,DB_PASSWORD -- psql -h localhost
 
 # a command that reads its own env var
 kleidos run --only MYSQL_PWD -- mysql -h db.internal -u appuser mydb
+
+# MYSQL_TLS_CA is set only where TLS is required, so being absent is normal
+kleidos run --only MYSQL_PWD --optional MYSQL_TLS_CA -- ./migrate
 ```
 
 Recommended default use: the secrets reach the command through its
 environment, never `argv` or stdout.
 
-Both `--only` and `--` are required. The child's exit status passes through.
-Values are resolved before the exec, so a missing key stops the command rather
-than starting it with a blank credential.
+`--` is required, and so is at least one of `--only` and `--optional`. The
+child's exit status passes through. Values are resolved before the exec, so a
+missing key stops the command rather than starting it with a blank credential.
+
+`--optional` injects a key only if it is present, for a key whose absence is a
+legitimate state. It does not soften `--only`: a key named there must exist, and
+a key that exists but holds an empty value fails under either flag.
+
+### has
+
+```bash
+kleidos has MYSQL_USER MYSQL_PWD       # exit 0, prints nothing
+kleidos has MYSQL_TLS_CA || ./install-ca.sh
+```
+
+Exit 0 if every key exists; 121 naming every absent key on stderr; 122 if the
+vault itself could not be read, which is a different condition. Nothing is ever
+written to stdout.
 
 ### set
 
@@ -92,7 +112,8 @@ kleidos set DB_PASSWORD              # prompts, echo off
 printf %s "$value" | kleidos set DB_PASSWORD --stdin
 ```
 
-Key names must match `[A-Z_][A-Z0-9_]*`. Values may not contain NUL.
+Key names must match `[A-Z_][A-Z0-9_]*`. Values may not be empty and may not
+contain NUL.
 
 ### get and reveal
 
@@ -119,6 +140,13 @@ DB_USER      2026-09-02T17:34:58Z  28530f2e
 
 The fingerprint is a keyed digest: equal fingerprints mean equal values.
 
+```bash
+kleidos list --names       # bare names, one per line, no header
+```
+
+The table is for humans and its columns may change. `--names` is the format a
+program reads; `has` answers the narrower question without any parsing at all.
+
 ### rename
 
 ```bash
@@ -138,13 +166,25 @@ eval "$(kleidos export)"
 kleidos import .env
 kleidos import .env --overwrite        # replace colliding keys
 kleidos import .env --skip-existing    # keep the vault's versions
+cat .env | kleidos import --stdin
 ```
 
 Accepts `KEY=value`, optionally `export `-prefixed, values optionally wrapped in
 matching quotes; no expansion is performed. Blank lines and whole-line `#`
-comments are ignored, anything else is rejected with a line number.
+comments are ignored, anything else is rejected, naming the line and the key.
 
 Without a flag, one existing key aborts the whole import.
+
+For input produced by a program rather than a person, use `--null`, which reads
+NUL-delimited `KEY=value` records:
+
+```bash
+./register-machine | kleidos import --stdin --null
+```
+
+There are no quoting rules to satisfy: everything after the first `=` is the
+value, verbatim, including whitespace, quotes and newlines. NUL delimits records
+because it is the one byte a stored value may not contain.
 
 ## Claude Code permission rules
 
@@ -156,6 +196,7 @@ Add to `~/.claude/settings.json`:
     "Bash(kleidos set:*)",
     "Bash(kleidos get:*)",
     "Bash(kleidos list:*)",
+    "Bash(kleidos has:*)",
     "Bash(kleidos delete:*)",
     "Bash(kleidos rename:*)",
     "Bash(kleidos import:*)",
