@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"kleidos/internal/errs"
 )
 
 func parse(t *testing.T, body string) ([]entry, error) {
@@ -254,5 +257,158 @@ func TestImportMissingFile(t *testing.T) {
 	vaultDir(t)
 	if err := Import([]string{"/nonexistent/.env"}); err == nil {
 		t.Fatal("a missing file was accepted")
+	}
+}
+
+func parseNull(t *testing.T, body string) ([]entry, error) {
+	t.Helper()
+	return parseNullRecords(strings.NewReader(body))
+}
+
+// The point of the format: a generator satisfies no quoting rules, so every byte
+// a .env file would have argued about arrives verbatim.
+func TestNullRecordsTakeValuesVerbatim(t *testing.T) {
+	body := strings.Join([]string{
+		"PLAIN=value",
+		"TRAILING_SPACE=value ",
+		"LEADING_SPACE= value",
+		"HASH=#not-a-comment",
+		`QUOTES="not stripped"`,
+		"EQUALS=a=b=c",
+		"NEWLINE=line1\nline2",
+		"BACKSLASH=a\\nb",
+	}, "\x00") + "\x00" // a generator terminates the last record too
+
+	entries, err := parseNull(t, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"PLAIN":          "value",
+		"TRAILING_SPACE": "value ",
+		"LEADING_SPACE":  " value",
+		"HASH":           "#not-a-comment",
+		"QUOTES":         `"not stripped"`,
+		"EQUALS":         "a=b=c",
+		"NEWLINE":        "line1\nline2",
+		"BACKSLASH":      `a\nb`,
+	}
+	if len(entries) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(entries), len(want))
+	}
+	for _, e := range entries {
+		if w, ok := want[e.key]; !ok || e.value != w {
+			t.Errorf("%s = %q, want %q (known=%v)", e.key, e.value, w, ok)
+		}
+	}
+}
+
+func TestNullRecordRejections(t *testing.T) {
+	cases := []struct{ name, body, wants string }{
+		{"no equals", "JUST_A_WORD\x00", "not a KEY=value record"},
+		{"empty record", "A=1\x00\x00B=2\x00", "empty record"},
+		{"lowercase key", "key=value\x00", "invalid key name"},
+		{"empty key", "=value\x00", "invalid key name"},
+		{"duplicate key", "A=1\x00A=2\x00", "duplicate key A"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := parseNull(t, c.body)
+			if err == nil {
+				t.Fatalf("%q was accepted", c.body)
+			}
+			if !strings.Contains(err.Error(), c.wants) {
+				t.Fatalf("error should mention %q, got: %v", c.wants, err)
+			}
+			// Every rejection names the record, so generated input can be traced.
+			if !strings.Contains(err.Error(), "record ") {
+				t.Fatalf("error should name the record, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestImportNullFromStdin(t *testing.T) {
+	dir := vaultDir(t)
+	withStdin(t, "CLIENT_ID=abc\x00CLIENT_SECRET=s3cret with spaces \x00")
+
+	if err := Import([]string{"--stdin", "--null"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := value(t, dir, "CLIENT_ID"); got != "abc" {
+		t.Fatalf("CLIENT_ID = %q", got)
+	}
+	if got := value(t, dir, "CLIENT_SECRET"); got != "s3cret with spaces " {
+		t.Fatalf("CLIENT_SECRET = %q", got)
+	}
+}
+
+func TestImportDotenvFromStdin(t *testing.T) {
+	dir := vaultDir(t)
+	withStdin(t, "A=1\nexport B=\"two\"\n")
+
+	if err := Import([]string{"--stdin"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := value(t, dir, "B"); got != "two" {
+		t.Fatalf("B = %q", got)
+	}
+}
+
+func TestImportRejectsStdinWithAFile(t *testing.T) {
+	vaultDir(t)
+	path := writeEnv(t, "A=1\n")
+	if err := Import([]string{"--stdin", path}); err == nil {
+		t.Fatal("--stdin with a file was accepted")
+	}
+}
+
+// For generated input the key is the stable identifier; the line number names a
+// stream that no longer exists by the time anyone reads the message.
+func TestImportDiagnosticsNameTheKey(t *testing.T) {
+	vaultDir(t)
+	path := writeEnv(t, "GOOD=1\nCLIENT_ID=trailing \n")
+
+	err := Import([]string{path})
+	if err == nil {
+		t.Fatal("malformed file was accepted")
+	}
+	for _, want := range []string{"CLIENT_ID", "line 2", "whitespace"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
+	}
+}
+
+func TestImportRejectsAnEmptyValue(t *testing.T) {
+	dir := vaultDir(t)
+	path := writeEnv(t, "GOOD=1\nEMPTY=\n")
+
+	err := Import([]string{path})
+	if !errors.Is(err, errs.ErrEmptyValue) {
+		t.Fatalf("want ErrEmptyValue, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "EMPTY") {
+		t.Errorf("error should name the key, got: %v", err)
+	}
+	// Rejected before the store is opened, so nothing was half-applied and the
+	// vault was never created.
+	if _, err := os.Stat(filepath.Join(dir, "secrets.age")); !os.IsNotExist(err) {
+		t.Fatalf("a rejected import created the vault: %v", err)
+	}
+}
+
+func TestImportNullRejectsAnEmptyValueNamingTheRecord(t *testing.T) {
+	vaultDir(t)
+	withStdin(t, "GOOD=1\x00CLIENT_ID=\x00")
+
+	err := Import([]string{"--stdin", "--null"})
+	if !errors.Is(err, errs.ErrEmptyValue) {
+		t.Fatalf("want ErrEmptyValue, got %v", err)
+	}
+	for _, want := range []string{"CLIENT_ID", "record 2"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
 	}
 }

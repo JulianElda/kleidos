@@ -31,7 +31,7 @@ usage:
   kleidos delete KEY               remove a key
   kleidos rename OLD NEW [--force] rename, preserving the update time
   kleidos export                   emit shell assignments for eval
-  kleidos import FILE              load a strict subset of .env
+  kleidos import FILE [--null]     load .env, or NUL-delimited records
 
 Values are never taken as arguments: argv is world-readable via /proc.
 `

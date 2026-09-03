@@ -9,11 +9,15 @@ import (
 	"kleidos/internal/vault"
 )
 
-// entry is one parsed assignment, in file order.
+// entry is one parsed assignment, in input order.
+//
+// loc is where it came from, already formatted -- "line 3" for .env input,
+// "record 3" for NUL-delimited input -- so that a caller reporting a problem
+// with an entry does not have to know which parser produced it.
 type entry struct {
 	key   string
 	value string
-	line  int
+	loc   string
 }
 
 // parseDotenv accepts a strict subset of .env and rejects everything else
@@ -85,13 +89,18 @@ func parseDotenv(r io.Reader) ([]entry, error) {
 			return nil, fmt.Errorf("line %d: duplicate key %s, already assigned on line %d", n, key, prev)
 		}
 
-		value, err := parseValue(rest, n)
+		// Once the key is known it goes into the diagnostic alongside the line.
+		// For generated input the key name is the stable identifier and the line
+		// number is noise -- worse than noise when the input was a pipe, since
+		// the stream naming that line no longer exists by the time anyone reads
+		// the message.
+		value, err := parseValue(rest, fmt.Sprintf("line %d (%s)", n, key))
 		if err != nil {
 			return nil, err
 		}
 
 		seen[key] = n
-		entries = append(entries, entry{key: key, value: value, line: n})
+		entries = append(entries, entry{key: key, value: value, loc: fmt.Sprintf("line %d", n)})
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("reading input: %w", err)
@@ -99,8 +108,9 @@ func parseDotenv(r io.Reader) ([]entry, error) {
 	return entries, nil
 }
 
-// parseValue handles the right-hand side of one assignment.
-func parseValue(rest string, n int) (string, error) {
+// parseValue handles the right-hand side of one assignment. at is the formatted
+// location, key included, that every diagnostic here is prefixed with.
+func parseValue(rest string, at string) (string, error) {
 	if rest == "" {
 		return "", nil
 	}
@@ -110,10 +120,10 @@ func parseValue(rest string, n int) (string, error) {
 		// the quote character cannot appear inside it.
 		end := strings.IndexByte(rest[1:], q)
 		if end < 0 {
-			return "", fmt.Errorf("line %d: unmatched %c quote; multi-line values are not supported", n, q)
+			return "", fmt.Errorf("%s: unmatched %c quote; multi-line values are not supported", at, q)
 		}
 		if tail := rest[end+2:]; tail != "" {
-			return "", fmt.Errorf("line %d: unexpected text after the closing quote: %q", n, tail)
+			return "", fmt.Errorf("%s: unexpected text after the closing quote: %q", at, tail)
 		}
 		return rest[1 : end+1], nil
 	}
@@ -121,13 +131,13 @@ func parseValue(rest string, n int) (string, error) {
 	// Unquoted values carry no delimiters, so anything ambiguous is refused
 	// rather than guessed at. Quoting is the fix in every case.
 	if strings.ContainsAny(rest, "\"'") {
-		return "", fmt.Errorf("line %d: unquoted value contains a quote character; wrap the whole value in quotes", n)
+		return "", fmt.Errorf("%s: unquoted value contains a quote character; wrap the whole value in quotes", at)
 	}
 	if strings.IndexByte(rest, '#') >= 0 {
-		return "", fmt.Errorf("line %d: unquoted value contains #, which could be a comment or part of the value; wrap the value in quotes", n)
+		return "", fmt.Errorf("%s: unquoted value contains #, which could be a comment or part of the value; wrap the value in quotes", at)
 	}
 	if rest != strings.Trim(rest, " \t") {
-		return "", fmt.Errorf("line %d: unquoted value has leading or trailing whitespace; wrap the value in quotes if it is intended", n)
+		return "", fmt.Errorf("%s: unquoted value has leading or trailing whitespace; wrap the value in quotes if it is intended", at)
 	}
 	return rest, nil
 }
