@@ -14,7 +14,7 @@ import (
 	"kleidos/internal/vault"
 )
 
-const runUsage = `usage: kleidos run --only K1,K2 -- command [args...]
+const runUsage = `usage: kleidos run --only K1,K2 [--optional K3] -- command [args...]
 
 Runs a command with the named secrets in its environment.
 
@@ -22,8 +22,18 @@ Values land in the child's environ, which is mode 0400 and owner-only, rather
 than in argv, which is 0444 and world-readable via /proc/<pid>/cmdline. That
 asymmetry is the entire point of this verb.
 
---only is required. Children inherit the whole environment, and so do
-grandchildren, so there is deliberately no way to inject the whole vault.
+At least one of --only and --optional is required. Children inherit the whole
+environment, and so do grandchildren, so both name their keys explicitly and
+there is deliberately no way to inject the whole vault.
+
+  --only      required keys. A missing one fails before exec, naming every
+              absent key, so the command never starts half-configured.
+  --optional  keys to inject only if they are present. Absence is not an error;
+              this is for a key whose absence is a legitimate state, such as one
+              this very command writes on its first run. It does not weaken
+              --only, because the caller declares up front what it can survive
+              without. A key that is present but empty still fails: empty is a
+              vault written wrong, not a key that is absent.
 
 What this guarantees, precisely: kleidos never writes the value to its own stdout
 and never places it in argv, and it fails before exec if decryption fails, so the
@@ -61,6 +71,7 @@ func Run(args []string) error {
 	fset.SetOutput(os.Stderr)
 	fset.Usage = func() { fmt.Fprintln(os.Stderr, runUsage) }
 	only := fset.String("only", "", "comma-separated list of keys to inject")
+	optional := fset.String("optional", "", "comma-separated list of keys to inject only if present")
 	if err := fset.Parse(flagArgs); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return errHelp
@@ -70,23 +81,37 @@ func Run(args []string) error {
 	if fset.NArg() != 0 {
 		return fmt.Errorf("unexpected argument %q before --\n%s", fset.Arg(0), runUsage)
 	}
-	if *only == "" {
-		return fmt.Errorf("run requires --only KEY[,KEY...]\n%s", runUsage)
+	if *only == "" && *optional == "" {
+		return fmt.Errorf("run requires --only KEY[,KEY...] or --optional KEY[,KEY...]\n%s", runUsage)
 	}
 
-	keys := strings.Split(*only, ",")
-	for _, k := range keys {
-		if k == "" {
-			return fmt.Errorf("--only contains an empty key name: %q", *only)
+	required, err := keyList("--only", *only)
+	if err != nil {
+		return err
+	}
+	opt, err := keyList("--optional", *optional)
+	if err != nil {
+		return err
+	}
+	// A key in both lists has no coherent reading: it cannot be both required
+	// and survivable.
+	named := make(map[string]bool, len(required))
+	for _, k := range required {
+		named[k] = true
+	}
+	var both []string
+	for _, k := range opt {
+		if named[k] {
+			both = append(both, k)
 		}
-		if err := vault.CheckKey(k); err != nil {
-			return err
-		}
+	}
+	if len(both) > 0 {
+		return fmt.Errorf("%s named in both --only and --optional", strings.Join(both, ", "))
 	}
 
 	// Resolve everything before exec, so a missing key or a failed decryption
 	// stops here rather than starting the command with a blank credential.
-	_, secrets, err := lookup(keys)
+	keys, secrets, err := lookupSome(required, opt)
 	if err != nil {
 		return err
 	}
@@ -122,8 +147,26 @@ func Run(args []string) error {
 	return nil // unreachable on success
 }
 
-// childEnv builds the child's environment: everything inherited, with the named
-// secrets overlaid. Secrets win on a collision, but the shadowing is reported.
+// keyList splits a comma-separated flag value and validates every name.
+func keyList(flag, csv string) ([]string, error) {
+	if csv == "" {
+		return nil, nil
+	}
+	keys := strings.Split(csv, ",")
+	for _, k := range keys {
+		if k == "" {
+			return nil, fmt.Errorf("%s contains an empty key name: %q", flag, csv)
+		}
+		if err := vault.CheckKey(k); err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
+}
+
+// childEnv builds the child's environment: everything inherited, with the
+// resolved secrets overlaid. Secrets win on a collision, but the shadowing is
+// reported.
 func childEnv(keys []string, secrets []*vault.Secret) ([]string, error) {
 	env := os.Environ()
 	at := make(map[string]int, len(env))

@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
+	"flag"
 	"fmt"
 	"text/tabwriter"
 	"time"
 )
 
-const listUsage = `usage: kleidos list
+const listUsage = `usage: kleidos list [--names]
 
 Prints every key with its update time and a fingerprint of its value. No
 plaintext is printed, so this needs no approval.
@@ -17,10 +19,20 @@ already decrypt the vault, which is the point: it confirms that two machines hol
 the same value, or that a write landed, without being a brute-forceable digest of
 a low-entropy secret.
 
-Listing requires the identity: all metadata lives inside the ciphertext.`
+Listing requires the identity: all metadata lives inside the ciphertext.
+
+  --names   print bare key names, one per line, with no header
+
+The table is human output: its columns are not a contract and may gain more. A
+program that needs to know what the vault holds reads --names, which is one.
+Answering "do these particular keys exist" is "has", which needs no parsing at
+all.`
 
 func List(args []string) error {
-	rest, err := parseFlags("list", listUsage, args, nil)
+	var names *bool
+	rest, err := parseFlags("list", listUsage, args, func(f *flag.FlagSet) {
+		names = f.Bool("names", false, "print bare key names, one per line")
+	})
 	if err != nil {
 		return err
 	}
@@ -37,14 +49,27 @@ func List(args []string) error {
 		return err
 	}
 
-	names := v.Names()
-	if len(names) == 0 {
+	keys := v.Names()
+	if len(keys) == 0 {
+		return nil
+	}
+
+	if *names {
+		bw := bufio.NewWriter(stdout)
+		for _, name := range keys {
+			if _, err := fmt.Fprintln(bw, name); err != nil {
+				return fmt.Errorf("writing output: %w", err)
+			}
+		}
+		if err := bw.Flush(); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
 		return nil
 	}
 
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tUPDATED\tFINGERPRINT")
-	for _, name := range names {
+	for _, name := range keys {
 		secret, _ := v.Get(name)
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", name,
 			secret.Updated.UTC().Format(time.RFC3339),

@@ -69,6 +69,88 @@ func TestRunRequiresOnly(t *testing.T) {
 	}
 }
 
+func TestRunOptionalInjectsWhatIsPresent(t *testing.T) {
+	seed(t, "REQUIRED", "r", "SOMETIMES", "s")
+	got := interceptExec(t)
+
+	if err := Run([]string{"--only", "REQUIRED", "--optional", "SOMETIMES", "--", "true"}); err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{"REQUIRED": "r", "SOMETIMES": "s"} {
+		if v, ok := envValue(got.env, k); !ok || v != want {
+			t.Fatalf("env %s = %q (present=%v), want %q", k, v, ok, want)
+		}
+	}
+}
+
+// The case the probe existed for: a key this very command writes later is
+// legitimately absent on the first run, and naming it under --only would make
+// that run impossible.
+func TestRunOptionalKeyMayBeAbsent(t *testing.T) {
+	seed(t, "REQUIRED", "r")
+	got := interceptExec(t)
+
+	if err := Run([]string{"--only", "REQUIRED", "--optional", "NOT_YET_WRITTEN", "--", "true"}); err != nil {
+		t.Fatalf("an absent optional key must not fail the run: %v", err)
+	}
+	if !got.called {
+		t.Fatal("run did not exec")
+	}
+	if _, ok := envValue(got.env, "NOT_YET_WRITTEN"); ok {
+		t.Fatal("an absent optional key was injected anyway")
+	}
+	if v, _ := envValue(got.env, "REQUIRED"); v != "r" {
+		t.Fatalf("REQUIRED = %q", v)
+	}
+}
+
+// --optional does not weaken --only: a missing required key still fails before
+// exec, even when an optional key resolved.
+func TestRunOptionalDoesNotWeakenOnly(t *testing.T) {
+	seed(t, "SOMETIMES", "s")
+	got := interceptExec(t)
+
+	err := Run([]string{"--only", "REQUIRED", "--optional", "SOMETIMES", "--", "true"})
+	if !errors.Is(err, errs.ErrKeyNotFound) {
+		t.Fatalf("want ErrKeyNotFound, got %v", err)
+	}
+	if got.called {
+		t.Fatal("run exec'd without a required key")
+	}
+}
+
+func TestRunAcceptsOptionalWithoutOnly(t *testing.T) {
+	seed(t, "SOMETIMES", "s")
+	got := interceptExec(t)
+
+	if err := Run([]string{"--optional", "SOMETIMES", "--", "true"}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := envValue(got.env, "SOMETIMES"); !ok || v != "s" {
+		t.Fatalf("SOMETIMES = %q (present=%v)", v, ok)
+	}
+}
+
+// A key cannot be both required and survivable.
+func TestRunRejectsAKeyInBothLists(t *testing.T) {
+	seed(t, "BOTH", "x")
+	got := interceptExec(t)
+
+	err := Run([]string{"--only", "BOTH", "--optional", "BOTH", "--", "true"})
+	if err == nil {
+		t.Fatal("a key named in both lists was accepted")
+	}
+	if !strings.Contains(err.Error(), "BOTH") {
+		t.Fatalf("error should name the key, got: %v", err)
+	}
+	if got.called {
+		t.Fatal("run exec'd on a contradictory request")
+	}
+}
+
+// A vault written before empty values were refused can still hold them. Injecting
+// one is what sends a self-re-execing consumer into a loop, so run refuses --
+// naming every offending key, because an older vault can hold several.
 func TestRunRefusesEmptyValuesAndNamesThemAll(t *testing.T) {
 	dir := seed(t, "REAL", "x")
 	seedRaw(t, dir, "OLD_EMPTY_A", "")
@@ -86,6 +168,23 @@ func TestRunRefusesEmptyValuesAndNamesThemAll(t *testing.T) {
 	}
 	if got.called {
 		t.Fatal("run exec'd with an empty value in the child environment")
+	}
+}
+
+// An optional key that is present but empty is a vault written wrong, not a key
+// that is absent, so it fails rather than being quietly skipped -- skipping it
+// would hand the child exactly the "unset" it was trying to detect.
+func TestRunRefusesAnEmptyOptionalValue(t *testing.T) {
+	dir := seed(t, "REAL", "x")
+	seedRaw(t, dir, "OLD_EMPTY", "")
+	got := interceptExec(t)
+
+	err := Run([]string{"--only", "REAL", "--optional", "OLD_EMPTY", "--", "true"})
+	if !errors.Is(err, errs.ErrEmptyValue) {
+		t.Fatalf("want ErrEmptyValue, got %v", err)
+	}
+	if got.called {
+		t.Fatal("run exec'd with an empty optional value")
 	}
 }
 

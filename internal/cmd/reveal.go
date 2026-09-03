@@ -26,7 +26,7 @@ func Reveal(args []string) error {
 		return fmt.Errorf("reveal needs at least one key\n%s", revealUsage)
 	}
 
-	_, secrets, err := lookup(keys)
+	secrets, err := lookup(keys)
 	if err != nil {
 		return err
 	}

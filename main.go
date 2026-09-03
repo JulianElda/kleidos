@@ -23,10 +23,11 @@ const usage = `kleidos -- key/value secrets in a single age-encrypted file
 
 usage:
   kleidos run --only K1,K2 -- cmd  exec cmd with the named secrets in its env
+  kleidos has KEY [KEY...]         exit 0 if every key exists; prints nothing
   kleidos set KEY [--stdin]        store a value (prompts on the terminal)
   kleidos get KEY [KEY...]         print values; terminal only
   kleidos reveal [-0] KEY [KEY...] print values unconditionally
-  kleidos list                     names, timestamps, fingerprints
+  kleidos list [--names]           names, timestamps, fingerprints
   kleidos delete KEY               remove a key
   kleidos rename OLD NEW [--force] rename, preserving the update time
   kleidos export                   emit shell assignments for eval
@@ -63,6 +64,8 @@ func dispatch(args []string) int {
 		err = cmd.Reveal(rest)
 	case "list":
 		err = cmd.List(rest)
+	case "has":
+		err = cmd.Has(rest)
 	case "delete":
 		err = cmd.Delete(rest)
 	case "rename":

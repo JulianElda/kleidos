@@ -44,7 +44,7 @@ func Get(args []string) error {
 		return fmt.Errorf("%w: refusing to print plaintext (use `kleidos reveal` to dump it deliberately)", errs.ErrNoTerminal)
 	}
 
-	_, secrets, err := lookup(keys)
+	secrets, err := lookup(keys)
 	if err != nil {
 		return err
 	}

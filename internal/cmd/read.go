@@ -16,7 +16,23 @@ import (
 // A partial read is the dangerous outcome: returning a username with an empty
 // password is worse than returning nothing, so any miss fails the whole call and
 // names every absent key at once.
-func lookup(keys []string) (*vault.Vault, []*vault.Secret, error) {
+func lookup(keys []string) ([]*vault.Secret, error) {
+	_, secrets, err := lookupSome(keys, nil)
+	return secrets, err
+}
+
+// lookupSome resolves two sets of keys: required, which is all-or-nothing, and
+// optional, which the caller has declared up front that it can run without. It
+// returns the keys that actually resolved -- every required key, then those
+// optional keys that were present -- alongside their secrets, in that order.
+//
+// This does not weaken the all-or-nothing rule. That rule exists because a
+// username with no password is worse than nothing, and it still holds over every
+// key the caller did not explicitly declare survivable. An optional key covers
+// the case where absence is a legitimate state rather than a failure -- a key
+// this very program writes later, most obviously -- and the alternative is what
+// consumers build instead, which is scraping `list` for the name.
+func lookupSome(required, optional []string) ([]string, []*vault.Secret, error) {
 	s, err := openStore()
 	if err != nil {
 		return nil, nil, err
@@ -25,16 +41,26 @@ func lookup(keys []string) (*vault.Vault, []*vault.Secret, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if missing := v.Missing(keys); len(missing) > 0 {
+	if missing := v.Missing(required); len(missing) > 0 {
 		return nil, nil, fmt.Errorf("%w: %s", errs.ErrKeyNotFound, strings.Join(missing, ", "))
 	}
 
-	secrets := make([]*vault.Secret, len(keys))
-	for i, k := range keys {
-		// Present with an empty value is a distinct, legitimate state.
-		secrets[i], _ = v.Get(k)
+	keys := make([]string, 0, len(required)+len(optional))
+	secrets := make([]*vault.Secret, 0, len(required)+len(optional))
+	for _, k := range required {
+		secret, _ := v.Get(k)
+		keys = append(keys, k)
+		secrets = append(secrets, secret)
 	}
-	return v, secrets, nil
+	for _, k := range optional {
+		secret, ok := v.Get(k)
+		if !ok {
+			continue
+		}
+		keys = append(keys, k)
+		secrets = append(secrets, secret)
+	}
+	return keys, secrets, nil
 }
 
 // emit writes values for human consumption: a lone value verbatim, or KEY=value

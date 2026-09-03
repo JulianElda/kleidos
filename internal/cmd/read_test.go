@@ -234,3 +234,32 @@ func TestListRejectsArguments(t *testing.T) {
 		t.Fatal("list took a positional argument")
 	}
 }
+
+// The table is human output; --names is the contract a program reads. Bare
+// names, sorted, no header, nothing to mis-parse when a column shifts.
+func TestListNamesPrintsBareSortedNames(t *testing.T) {
+	seed(t, "ZULU", "z", "ALPHA", "a", "MIKE", "m")
+	out := capture(t)
+
+	if err := List([]string{"--names"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), "ALPHA\nMIKE\nZULU\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestListNamesPrintsNothingForAnEmptyVault(t *testing.T) {
+	dir := seed(t, "A", "1")
+	if err := Delete([]string{"A"}); err != nil {
+		t.Fatal(err)
+	}
+	out := capture(t)
+	if err := List([]string{"--names"}); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("empty vault printed %q", out.String())
+	}
+	_ = dir
+}
