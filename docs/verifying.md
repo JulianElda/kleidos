@@ -23,6 +23,13 @@ test -t 2 && echo TTY || echo NOTTY              # expect NOTTY under Claude Cod
 script -qc 'test -t 2 && echo TTY || echo NOTTY' /dev/null   # expect TTY
 ```
 
+Both halves of the fourth are now also asserted by `main_test.go`, which opens
+its own pty rather than shelling out to `script`: it puts a terminal on the
+child's stderr while stdout stays a pipe, which is the arrangement the gate was
+designed around and the one `script` cannot express. Keep the one-liner: it is
+what tells you whether *this harness* still presents no TTY, which is a fact
+about the environment rather than about kleidos.
+
 ---
 
 ## Verifying the permission rules

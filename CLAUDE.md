@@ -35,6 +35,7 @@ provenance table at the top of `docs/findings.md` in the same edit.
 
 ```
 main.go                 usage text, verb dispatch, RLIMIT_CORE(0), os.Exit
+main_test.go            the built binary, driven as a process
 internal/errs/          error sentinels, Coded, Code() -> exit status
 internal/vault/
   paths.go              Dir(): $KLEIDOS_DIR, else $XDG_DATA_HOME/kleidos,
@@ -122,6 +123,11 @@ deliberate decision, most of them tested directly.
 7. If it prints plaintext, it needs its own line in the README permission
    snippet, under `ask` rather than `allow`.
 
+Steps 6 and 7 are checked: `main_test.go` reads the verbs back out of
+`kleidos help` and fails if one is undispatchable or missing from the README's
+permission snippet. It cannot tell `allow` from `ask` — that judgement is
+still yours.
+
 ## Tests
 
 ```bash
@@ -142,7 +148,16 @@ loudly on:
   claiming two-shell coverage it does not have.
 
 `KLEIDOS_DIR` is how tests reach a scratch vault; `cmd`'s `vaultDir(t)` sets it
-via `t.Setenv`. Never run a test that could touch the real vault.
+via `t.Setenv`, and `main_test.go` passes it to the child. Never run a test that
+could touch the real vault.
+
+`main_test.go` builds the binary and drives it as a process. It is deliberately
+thin: it covers only what stops being true when the seams below it are
+substituted — the exit status reaching `os.Exit`, `run` actually calling
+`execve` (the child reads its own `/proc/<pid>/cmdline` and `environ`), the
+child inheriting `RLIMIT_CORE(0)`, and `get` against a real pty on stderr with
+stdout still a pipe. A case that can be written against a function belongs in
+the package suites instead.
 
 Seams to use instead of refactoring for testability — all already in place:
 
