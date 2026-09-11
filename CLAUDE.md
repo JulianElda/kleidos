@@ -181,8 +181,8 @@ Test names state the property, not the method
 
 ## Conventions
 
-- Single-line conventional-commit titles, no body, no attribution footers.
-  Branch is `master`.
+- Single-line conventional-commit titles, no body apart from the attribution
+  trailers Claude Code appends. Branch is `master`.
 - Comments explain *why*, and are dense where a decision is non-obvious. Match
   the surrounding density rather than trimming it.
 - Usage text lives in a `<verb>Usage` const beside the verb and doubles as its
