@@ -193,8 +193,8 @@ func TestDashCorruptsHighBytesThroughCommandSubstitution(t *testing.T) {
 	}
 
 	// 0xc2 0x82 is U+0082; the trailing byte is the one dash escapes.
-	const script = `s=$(printf "aÂb"); printf %s "$s"`
-	want := "aÂb"
+	const script = "s=$(printf \"a\u0082b\"); printf %s \"$s\""
+	want := "a\u0082b"
 
 	out, err := exec.Command(bash, "-c", script).Output()
 	if err != nil {
@@ -212,7 +212,7 @@ func TestDashCorruptsHighBytesThroughCommandSubstitution(t *testing.T) {
 		t.Skip("dash no longer corrupts high bytes through command substitution; " +
 			"the intermediate-variable mode could be restored to evalModes")
 	}
-	if string(out) != "aÂb" {
+	if string(out) != "a\xc2\x81\x82b" {
 		t.Logf("dash corrupts this differently than recorded: got % x", out)
 	}
 	t.Logf("dash (%s) injects CTLESC: got % x, want % x -- a dash bug, not a quoting bug", dash, out, want)

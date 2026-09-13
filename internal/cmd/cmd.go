@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 
 	"kleidos/internal/vault"
@@ -66,12 +65,3 @@ var errHelp = errors.New("help requested")
 
 // IsHelp reports whether err came from an explicit -h.
 func IsHelp(err error) bool { return errors.Is(err, errHelp) }
-
-// flushTo writes b and checks the error. A silently truncated secret is worse
-// than none, so every plaintext write path goes through here.
-func flushTo(w io.Writer, b []byte) error {
-	if _, err := w.Write(b); err != nil {
-		return fmt.Errorf("writing output: %w", err)
-	}
-	return nil
-}

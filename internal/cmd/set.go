@@ -75,7 +75,7 @@ func prompt(key string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("no terminal available to prompt on (use --stdin): %w", err)
 	}
-	defer tty.Close()
+	defer func() { _ = tty.Close() }()
 
 	fd := int(tty.Fd())
 	state, err := term.GetState(fd)
@@ -90,16 +90,16 @@ func prompt(key string) ([]byte, error) {
 	defer signal.Stop(sig)
 	go func() {
 		<-sig
-		term.Restore(fd, state)
-		fmt.Fprintln(tty)
+		_ = term.Restore(fd, state)
+		_, _ = fmt.Fprintln(tty)
 		os.Exit(130) // 128 + SIGINT, per the shell convention
 	}()
 
-	fmt.Fprintf(tty, "value for %s: ", key)
+	_, _ = fmt.Fprintf(tty, "value for %s: ", key)
 	value, err := term.ReadPassword(fd)
-	fmt.Fprintln(tty)
+	_, _ = fmt.Fprintln(tty)
 	if err != nil {
-		term.Restore(fd, state)
+		_ = term.Restore(fd, state)
 		return nil, fmt.Errorf("reading value: %w", err)
 	}
 	return value, nil

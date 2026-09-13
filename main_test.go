@@ -73,7 +73,7 @@ func binary(t *testing.T) string {
 func TestMain(m *testing.M) {
 	code := m.Run()
 	if builtBin != "" {
-		os.RemoveAll(filepath.Dir(builtBin))
+		_ = os.RemoveAll(filepath.Dir(builtBin))
 	}
 	os.Exit(code)
 }
@@ -342,7 +342,7 @@ func TestGetPrintsWhenStderrIsATerminal(t *testing.T) {
 
 	// Nothing is expected on the terminal, but an unread master would block
 	// the child if anything were written to it.
-	go io.Copy(io.Discard, master)
+	go func() { _, _ = io.Copy(io.Discard, master) }()
 
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("get with a terminal on stderr failed: %v", err)
@@ -364,7 +364,7 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	if err != nil {
 		t.Fatalf("opening /dev/ptmx: %v", err)
 	}
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { _ = m.Close() })
 
 	var unlock int32 // 0 unlocks the slave side
 	if err := ioctl(m.Fd(), syscall.TIOCSPTLCK, uintptr(unsafe.Pointer(&unlock))); err != nil {
@@ -379,7 +379,7 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	if err != nil {
 		t.Fatalf("opening pty slave: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	return m, s
 }
 

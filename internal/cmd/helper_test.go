@@ -25,14 +25,14 @@ func withStdin(t *testing.T, data string) {
 		t.Fatalf("creating pipe: %v", err)
 	}
 	go func() {
-		w.WriteString(data)
-		w.Close()
+		_, _ = w.WriteString(data)
+		_ = w.Close()
 	}()
 	old := os.Stdin
 	os.Stdin = r
 	t.Cleanup(func() {
 		os.Stdin = old
-		r.Close()
+		_ = r.Close()
 	})
 }
 

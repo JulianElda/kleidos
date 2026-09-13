@@ -30,7 +30,7 @@ func concurrentWrites(t *testing.T, dir string, n int, update func(*Store, func(
 	start := make(chan struct{})
 	errCh := make(chan error, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -78,7 +78,7 @@ func concurrentWrites(t *testing.T, dir string, n int, update func(*Store, func(
 // times and requires every run to be perfect.
 func TestConcurrentWritersLoseNothing(t *testing.T) {
 	n := runs(t)
-	for run := 0; run < n; run++ {
+	for run := range n {
 		dir := scratchDir(t)
 		writeKeys(t, dir, 1)
 
@@ -105,7 +105,7 @@ func (s *Store) brokenUpdate(fn func(*Vault) error) error {
 		return err
 	}
 	if err := syscall.Flock(int(lf.Fd()), syscall.LOCK_EX); err != nil {
-		lf.Close()
+		_ = lf.Close()
 		return err
 	}
 	err = func() error {
@@ -123,9 +123,9 @@ func (s *Store) brokenUpdate(fn func(*Vault) error) error {
 		}
 		return s.save(v)
 	}()
-	syscall.Flock(int(lf.Fd()), syscall.LOCK_UN)
-	lf.Close()
-	os.Remove(s.lockPath()) // the bug under test
+	_ = syscall.Flock(int(lf.Fd()), syscall.LOCK_UN)
+	_ = lf.Close()
+	_ = os.Remove(s.lockPath()) // the bug under test
 	return err
 }
 
@@ -145,7 +145,7 @@ func TestBrokenLockActuallyLoses(t *testing.T) {
 	worst := writers
 	lost := 0
 
-	for run := 0; run < n; run++ {
+	for range n {
 		dir := scratchDir(t)
 		writeKeys(t, dir, 1)
 
@@ -186,7 +186,7 @@ func TestReadsAreNeverTorn(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 200; i++ {
+		for i := range 200 {
 			w, err := Open(dir)
 			if err != nil {
 				t.Error(err)

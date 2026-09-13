@@ -64,7 +64,7 @@ func (s *Store) load() (*Vault, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	r, err := age.Decrypt(f, s.ids...)
 	if err != nil {
@@ -110,12 +110,12 @@ func (s *Store) withLock(fn func() error) error {
 		return fmt.Errorf("opening lock: %w", err)
 	}
 	if err := syscall.Flock(int(lf.Fd()), syscall.LOCK_EX); err != nil {
-		lf.Close()
+		_ = lf.Close()
 		return fmt.Errorf("locking: %w", err)
 	}
 	err = fn()
-	syscall.Flock(int(lf.Fd()), syscall.LOCK_UN)
-	lf.Close()
+	_ = syscall.Flock(int(lf.Fd()), syscall.LOCK_UN)
+	_ = lf.Close()
 	return err
 }
 
@@ -138,25 +138,25 @@ func (s *Store) save(v *Vault) error {
 	// Registered immediately, before anything is written: a failure between here
 	// and the rename would otherwise leave a full ciphertext copy behind. After a
 	// successful rename this is a harmless ENOENT.
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 
 	w, err := age.Encrypt(tmp, recips...)
 	if err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := v.Encode(w); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	// Closing the age writer MUST precede Sync: it flushes the final chunk and
 	// the MAC. Syncing first fsyncs an incomplete ciphertext.
 	if err := w.Close(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -193,7 +193,7 @@ func (s *Store) save(v *Vault) error {
 		return err
 	}
 	if err := d.Sync(); err != nil {
-		d.Close()
+		_ = d.Close()
 		return err
 	}
 	return d.Close()
@@ -213,7 +213,7 @@ func (s *Store) recipients() ([]age.Recipient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", errs.ErrIdentity, p, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	recips, err := age.ParseRecipients(f)
 	if err != nil {
@@ -232,7 +232,7 @@ func loadIdentities(dir string) ([]age.Identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", errs.ErrIdentity, p, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ids, err := age.ParseIdentities(f)
 	if err != nil {

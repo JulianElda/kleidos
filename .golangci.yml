@@ -1,0 +1,18 @@
+version: "2"
+
+linters:
+  # standard: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - intrange
+    - misspell
+    - nolintlint
+  settings:
+    nolintlint:
+      # A suppression is a decision, and decisions here carry their reason.
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofmt

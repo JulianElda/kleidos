@@ -69,7 +69,7 @@ func Import(args []string) error {
 		if err != nil {
 			return fmt.Errorf("opening %s: %w", rest[0], err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		src, name = f, rest[0]
 	}
 

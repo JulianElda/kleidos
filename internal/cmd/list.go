@@ -68,12 +68,16 @@ func List(args []string) error {
 	}
 
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tUPDATED\tFINGERPRINT")
+	if _, err := fmt.Fprintln(tw, "NAME\tUPDATED\tFINGERPRINT"); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
 	for _, name := range keys {
 		secret, _ := v.Get(name)
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", name,
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n", name,
 			secret.Updated.UTC().Format(time.RFC3339),
-			v.Fingerprint(secret.Value))
+			v.Fingerprint(secret.Value)); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
 	}
 	if err := tw.Flush(); err != nil {
 		return fmt.Errorf("writing output: %w", err)

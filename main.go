@@ -48,7 +48,7 @@ func main() {
 
 func dispatch(args []string) int {
 	if len(args) == 0 {
-		io.WriteString(os.Stderr, usage)
+		_, _ = io.WriteString(os.Stderr, usage)
 		return errs.Generic
 	}
 
@@ -78,14 +78,14 @@ func dispatch(args []string) int {
 	case "import":
 		err = cmd.Import(rest)
 	case "help", "-h", "--help":
-		io.WriteString(os.Stdout, usage)
+		_, _ = io.WriteString(os.Stdout, usage)
 		return errs.OK
 	case "version", "--version":
 		fmt.Println("kleidos", version)
 		return errs.OK
 	default:
 		fmt.Fprintf(os.Stderr, "kleidos: unknown command %q\n\n", verb)
-		io.WriteString(os.Stderr, usage)
+		_, _ = io.WriteString(os.Stderr, usage)
 		return errs.Generic
 	}
 

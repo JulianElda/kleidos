@@ -247,10 +247,10 @@ func TestRunSecretsWinAndShadowingIsReported(t *testing.T) {
 	os.Stderr = w
 	runErr := Run([]string{"--only", "SHADOWED", "--", "true"})
 	os.Stderr = oldStderr
-	w.Close()
+	_ = w.Close()
 	warning := make([]byte, 512)
 	n, _ := r.Read(warning)
-	r.Close()
+	_ = r.Close()
 
 	if runErr != nil {
 		t.Fatal(runErr)

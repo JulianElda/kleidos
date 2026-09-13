@@ -118,7 +118,7 @@ func TestSecondWriteHardlinksPreviousCiphertext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	r, err := age.Decrypt(f, s.ids...)
 	if err != nil {
 		t.Fatalf("decrypting .bak: %v", err)
@@ -153,11 +153,11 @@ func TestEncryptsToEveryRecipient(t *testing.T) {
 		}
 		r, err := age.Decrypt(f, id)
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			t.Fatalf("identity %d could not decrypt: %v", i, err)
 		}
 		v, err := Decode(r)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -175,7 +175,9 @@ func TestUpdateAbortLeavesVaultAndDirectoryClean(t *testing.T) {
 
 	sentinel := errors.New("caller changed its mind")
 	if err := s.Update(func(v *Vault) error {
-		v.Set("A", "clobbered")
+		if err := v.Set("A", "clobbered"); err != nil {
+			return err
+		}
 		return sentinel
 	}); !errors.Is(err, sentinel) {
 		t.Fatalf("want the caller's error back, got %v", err)
@@ -195,7 +197,7 @@ func TestUpdateAbortLeavesVaultAndDirectoryClean(t *testing.T) {
 
 func TestLockFileIsCreatedAndNeverRemoved(t *testing.T) {
 	s, dir := newStore(t)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := s.Update(func(v *Vault) error { return v.Set("A", "x") }); err != nil {
 			t.Fatal(err)
 		}

@@ -52,7 +52,7 @@ func ScratchDir(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("creating scratch dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
 
@@ -67,7 +67,7 @@ func WriteKeys(t *testing.T, dir string, n int) []*age.X25519Identity {
 
 	var ids []*age.X25519Identity
 	var recips string
-	for i := 0; i < n; i++ {
+	for range n {
 		id, err := age.GenerateX25519Identity()
 		if err != nil {
 			t.Fatalf("generating identity: %v", err)

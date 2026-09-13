@@ -43,7 +43,7 @@ internal/vault/
   format.go             Vault/Secret JSON, CheckKey, CheckValue, Fingerprint
   store.go              age envelope, flock, the atomic write path
 internal/cmd/
-  cmd.go                openStore, parseFlags, errHelp, flushTo
+  cmd.go                openStore, parseFlags, errHelp
   read.go               lookup (all-or-nothing), lookupSome (--optional),
                         emit, emitNUL, stdout seam
   <verb>.go             one file per verb, each with a `<verb>Usage` const
@@ -135,7 +135,12 @@ go test ./...              # full suite; 20x50-writer write-path stress
 go test -short ./...       # stress drops to 2 runs, broken-lock control skips
 go test ./internal/cmd/ -run '^$' -fuzz FuzzShellQuote -fuzztime 60s
 gofmt -l . && go vet ./...
+golangci-lint run          # .golangci.yml; v2 config
 ```
+
+Deliberately ignored errors are written `_ = f()`, not left bare: errcheck
+enforces it, and it separates a decision from an oversight. A `//nolint` must
+name its linter and give a reason.
 
 Two environment requirements the suite checks rather than assumes, and fails
 loudly on:

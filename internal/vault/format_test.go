@@ -98,7 +98,7 @@ func TestFingerprintIsKeyed(t *testing.T) {
 	if got := a.Fingerprint("hunter2"); len(got) != 8 {
 		t.Fatalf("fingerprint should be 8 hex chars, got %q", got)
 	}
-	if a.Fingerprint("hunter2") != a.Fingerprint("hunter2") {
+	if first, second := a.Fingerprint("hunter2"), a.Fingerprint("hunter2"); first != second {
 		t.Fatal("fingerprint is not deterministic")
 	}
 	if a.Fingerprint("hunter2") == a.Fingerprint("hunter3") {
@@ -113,7 +113,9 @@ func TestFingerprintIsKeyed(t *testing.T) {
 
 func TestMissingReportsEveryName(t *testing.T) {
 	v, _ := New()
-	v.Set("PRESENT", "x")
+	if err := v.Set("PRESENT", "x"); err != nil {
+		t.Fatal(err)
+	}
 	got := v.Missing([]string{"A", "PRESENT", "B"})
 	if len(got) != 2 || got[0] != "A" || got[1] != "B" {
 		t.Fatalf("want [A B] in request order, got %v", got)
