@@ -27,6 +27,7 @@ usage:
   kleidos set KEY [--stdin]        store a value (prompts on the terminal)
   kleidos get KEY [KEY...]         print values; terminal only
   kleidos reveal [-0] KEY [KEY...] print values unconditionally
+  kleidos copy KEY                 put a value on the clipboard; terminal only
   kleidos list [--names]           names, timestamps, fingerprints
   kleidos delete KEY               remove a key
   kleidos rename OLD NEW [--force] rename, preserving the update time
@@ -62,6 +63,11 @@ func dispatch(args []string) int {
 		err = cmd.Get(rest)
 	case "reveal":
 		err = cmd.Reveal(rest)
+	case "copy":
+		err = cmd.Copy(rest)
+	case cmd.ServeVerb:
+		// Undocumented: the background half of copy, started by copy itself.
+		err = cmd.CopyServe(rest)
 	case "list":
 		err = cmd.List(rest)
 	case "has":

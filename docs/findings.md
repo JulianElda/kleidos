@@ -21,6 +21,9 @@ for re-measuring these are in [verifying.md](verifying.md).
 The `/proc` asymmetry in the last two rows is what `run`'s entire design rests
 on. `ptrace_scope` at 1 is the second layer under it.
 
+The clipboard section was measured on a different machine, which a WSL2 kernel
+could not have stood in for; its environment is given there.
+
 ---
 
 ## Write path under concurrency
@@ -132,3 +135,44 @@ measured with `deny` rules rather than `ask` rules.
 **Rules added mid-session are inert until restart, and fail open with no
 feedback.** Always restart after editing settings, and verify with a `deny` rule
 that a denial is actually visible.
+
+---
+
+## Clipboard
+
+| | |
+|---|---|
+| measured | 2026-09-15 |
+| kernel | Linux 7.2.5, x86_64 |
+| distro | NixOS 26.11 |
+| session | KDE Plasma 6.7.5 on Wayland (KWin 6.7.5), XWayland 24.1.13 |
+| Go | 1.26.7 |
+
+The built binary was driven under `script` so stderr was a terminal, against a
+scratch vault holding a dummy value, and observed with `wl-paste`, `ps` and
+Klipper's D-Bus history.
+
+- **KWin advertises `ext_data_control_manager_v1` only**, not the wlroots
+  protocol, so the Wayland path measured here is the ext one. The wlroots path is
+  covered by the fake compositor in the tests, not by a real one.
+- **Both backends round-trip the value** byte for byte, and both offer
+  `x-kde-passwordManagerHint`. KWin relays an X11 owner's targets to Wayland
+  clients, the hint included.
+- **Klipper records neither.** Control: the same dummy value copied with plain
+  `wl-copy`, without `--sensitive`, was recorded at once.
+- **Once a value is in Klipper's history, clearing brings it back.** After the
+  control above, a `copy` of the same value cleared on time and its process
+  exited, yet the value stayed pasteable: Klipper had refilled the emptied
+  clipboard from its newest history entry, offering
+  `application/x-kde-onlyReplaceEmpty` and no password hint. `copy` cannot help a
+  secret that reached history some other way, such as `get FOO | wl-copy`.
+- **The background process's argv is `kleidos __copy-serve 4s`** for a 4s
+  deadline. At the deadline the clipboard is empty and the process gone, on both
+  backends.
+- **Copying something else ends the Wayland server at once. It does not end the
+  X11 server under XWayland:** no `SelectionClear` arrived when `wl-copy` took the
+  clipboard. Why is not established; KWin bridging the X11 selection only while
+  an X11 window has focus is a guess. The X11 server lives to its deadline, and
+  relinquishing then left the newer value in place.
+- **Without `WAYLAND_DISPLAY` and `DISPLAY`**, `copy` exits 120 naming both
+  reasons, after the server reports; `copied` is not printed.

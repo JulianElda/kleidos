@@ -46,6 +46,10 @@ Permission rules are applied per verb: everything that cannot print plaintext is
 `allow`, the two verbs that dump plaintext are `ask`, and the identity file is
 `deny` for `Read`. The rules to paste are in the README.
 
+`copy` is `ask` too, although it prints nothing: it puts plaintext where every
+process in the desktop session can read it, so it is a dump with an extra step.
+Its terminal check is the same accident guard as `get`'s.
+
 `run` stays `allow` because prompting on every ordinary command defeats the tool,
 and because `run` offers no guarantee a prompt would be protecting: it hands the
 value to a child and has no control after `execve`.
@@ -80,6 +84,15 @@ in [verifying.md](verifying.md).
 - `run` guards its own stdout and argv, not the child's. `reveal` and `export`
   are explicit dumps.
 - `K=$(kleidos reveal FOO)` is silently lossy. Use `-0`.
+- While `copy`'s deadline runs, any process in the desktop session can paste the
+  value, and a clipboard manager that ignores the password hint can record it
+  forever. The deadline bounds the first, not the second. A manager that
+  refills an empty clipboard from history (Klipper does) will put back a value
+  that reached its history by any other route the moment `copy` clears.
+- On the X11 fallback under XWayland, the compositor may not tell the old owner
+  when a Wayland client copies over it, so the background process can live until
+  its deadline instead of exiting at once. On KDE Plasma it does not clear the
+  newer value when it does exit; see [findings.md](findings.md#clipboard).
 - Syncing the vault between machines can silently lose writes: single blob,
   last-write-wins.
 - Permission matcher behavior is version-dependent, measured once, on one version,

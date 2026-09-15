@@ -2,7 +2,8 @@
 
 Key/value secrets in one age-encrypted file. Go; `filippo.io/age` is a library,
 so nothing shells out to `age` at runtime — `age-keygen` appears only in setup.
-Linux only: `flock`, `statfs`, `/dev/tty`, `/proc`.
+Linux only: `flock`, `statfs`, `/dev/tty`, `/proc`, and the Wayland and X11
+wire protocols for `copy`.
 
 **The primary caller is an agent, not a human.** That is why values never appear
 in `argv`, why plaintext dumps are separate verbs, and why error taxonomy and
@@ -50,11 +51,16 @@ internal/cmd/
   dotenv.go             the strict .env subset parser (used only by import)
   nullrec.go            the NUL-delimited KEY=value parser (--null), same
   shellquote.go         single-quote escaping for export
+  copy.go               also the hidden __copy-serve verb and the spawn
+internal/clipboard/     Serve(): owns the clipboard over the display protocol
+  wayland.go            data-control (ext, else wlroots), stdlib only
+  x11.go                ICCCM selection owner over the local X socket
 internal/testenv/       scratch dirs and key material, shared by both suites
 ```
 
-Dependencies point one way: `cmd` -> `vault` -> `errs`. `vault` must not import
-`cmd`.
+Dependencies point one way: `cmd` -> `vault` -> `errs`, and `cmd` ->
+`clipboard`. `vault` must not import `cmd`; `clipboard` imports nothing of
+kleidos's and never sees a key name.
 
 ## Invariants
 
@@ -93,6 +99,13 @@ deliberate decision, most of them tested directly.
   correctness gain. This is not an oversight to fix.
 - **The lock file is never unlinked.** `flock` locks an inode, not a path;
   unlink it and two writers hold exclusive locks on different objects.
+- **`copy`'s server gets the value on stdin, and reports on fd 3.** Not argv,
+  not environ — the same reason as `run`. It is a re-exec of the binary under
+  `setsid`, because Go cannot fork and the Linux clipboard needs a live owner.
+  The parent prints `copied` only after the server says it holds the selection.
+- **`copy` is `ask` although it prints nothing.** The clipboard is readable by
+  the whole session. Do not move it to `allow` on the strength of its terminal
+  check.
 - **`get` gates on stderr, not stdout.** Under an agent harness all three
   descriptors are non-TTY, so stderr is a terminal exactly when a human is. This
   keeps `get K > file` working while a captured call refuses.
@@ -160,9 +173,10 @@ could touch the real vault.
 thin: it covers only what stops being true when the seams below it are
 substituted — the exit status reaching `os.Exit`, `run` actually calling
 `execve` (the child reads its own `/proc/<pid>/cmdline` and `environ`), the
-child inheriting `RLIMIT_CORE(0)`, and `get` against a real pty on stderr with
-stdout still a pipe. A case that can be written against a function belongs in
-the package suites instead.
+child inheriting `RLIMIT_CORE(0)`, `get` against a real pty on stderr with
+stdout still a pipe, and `copy`'s server being a separate process in its own
+session with the value in neither its argv nor its environ. A case that can be
+written against a function belongs in the package suites instead.
 
 Seams to use instead of refactoring for testability — all already in place:
 
@@ -175,6 +189,14 @@ Seams to use instead of refactoring for testability — all already in place:
 | `withStdin(t, data)` | `cmd/helper_test.go` | `--stdin` paths |
 | `(*Store).brokenUpdate` | `vault/stress_test.go` | the lock's negative control |
 | `seedRaw(t, dir, k, v)` | `cmd/helper_test.go` | states the write paths refuse |
+| `spawnServer` | `cmd/copy.go` | what `copy` would hand the server |
+| `serveClipboard` | `cmd/copy.go` | the server's reporting, without a display |
+| `startCompositor`, `startXServer` | `clipboard/*_test.go` | fake display servers |
+
+The clipboard tests never touch the real session: the fakes point
+`WAYLAND_DISPLAY` or `DISPLAY` at their own sockets and unset the other. What
+the fakes cannot prove — a real desktop's behavior — is the manual procedure in
+[docs/verifying.md](docs/verifying.md#verifying-the-clipboard).
 
 `TestBrokenLockActuallyLoses` is a control, not a feature test: it asserts the
 unlocked variant *does* lose writes, and fails if it does not. Should it start

@@ -42,6 +42,55 @@ grain of the enforcement mechanism. Ordinary reads never prompt; the plaintext
 dumps do. This fixes no bypass — nothing does — but it removes the standing
 incentive to go looking for them.
 
+### Why `copy` is gated like `get` and still sits under `ask`
+
+`get FOO | wl-copy` already worked for a human at a terminal. `copy` exists
+because doing it properly takes more than a pipe: no added newline, the
+password-manager hint so clipboard history skips it, and a deadline after which
+the value is gone.
+
+It prints nothing, which makes it look as harmless as `has`. It is not. The
+clipboard is readable by every process in the desktop session, so
+`kleidos copy FOO && wl-paste` is `reveal` spelled in two commands. Hence both
+layers: the stderr terminal check, because the verb is for a human about to
+paste, and `ask` in the permission snippet, because the check stops accidents,
+not a pty. `get` is `allow` because prompting on every read gets routed around;
+`copy` is an occasional human action, so the prompt costs little.
+
+A deadline is mandatory — `--clear-after` must be positive — because a secret
+that stays pasteable indefinitely is the failure the verb exists to avoid.
+
+### Why `copy` speaks the display protocol itself
+
+The requirement was that it work with nothing installed. No clipboard program
+is installed by default on Linux, and the Go clipboard libraries either need cgo
+(X11 only) or run `xclip`/`wl-copy` themselves. So `internal/clipboard` speaks
+the wire protocols directly, on the standard library: Wayland data-control
+(`ext_data_control_v1`, else the identically-shaped wlroots predecessor), then
+X11 selections as the fallback, which also covers compositors without
+data-control through XWayland. `wl_data_device` is not an option — it only
+accepts a selection from a client holding keyboard focus.
+
+Not shelling out also means the value is never handed to whatever `wl-copy`
+happens to be first on `PATH`. That is tidiness rather than a boundary; see the
+threat model.
+
+**The shape is dictated by how Linux clipboards work.** Nothing stores the
+value: the client that copied must stay connected and hand the bytes over on
+each paste. Go cannot fork, so `copy` re-executes its own binary as a hidden
+verb, in a new session so the terminal closing does not take the clipboard with
+it. The value goes over that child's stdin, never argv (world-readable) or
+environ (inherited by anything it might start). The child reports on fd 3
+before the parent exits, so `copied` is never printed for a copy that failed.
+
+Clearing leans on the same property: selection ownership belongs to the
+connection, so however the server exits — deadline, replacement, `kill -9` —
+the display server drops the value. At the deadline it also clears explicitly.
+
+On X11, values larger than one `ChangeProperty` request (about 256 KiB) are
+refused up front rather than implementing the INCR transfer protocol. No
+credential needs it.
+
 ### Why `reveal -0` is the machine-readable path, not a niche flag
 
 `K=$(kleidos reveal FOO)` destroys trailing newlines: `a\n` and `a\n\n\n` both
