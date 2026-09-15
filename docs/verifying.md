@@ -32,6 +32,35 @@ about the environment rather than about kleidos.
 
 ---
 
+## Verifying the clipboard
+
+The suite drives both protocols against fakes, so it proves the client follows
+the protocol as written, not that a given desktop behaves that way. Re-run this
+on a new desktop, and after a compositor upgrade. It needs a scratch vault
+holding a dummy value, and overwrites the real clipboard.
+
+```bash
+k() { KLEIDOS_DIR=$scratch script -qec "kleidos $*" /dev/null; }
+
+k copy DUMMY --clear-after 5s                  # Wayland path
+wl-paste --list-types                          # expect x-kde-passwordManagerHint
+wl-paste; ps -eo args | rg '__copy-serve'      # expect the value; no value in argv
+sleep 6; wl-paste; pgrep -x kleidos            # expect nothing copied; no process
+
+WAYLAND_DISPLAY= k copy DUMMY --clear-after 5s # X11 path: repeat the three above
+
+k copy DUMMY --clear-after 60s; printf x | wl-copy
+pgrep -x kleidos                               # Wayland: expect no process
+```
+
+For clipboard history, check that the manager did not record the value, and run
+a control that it does record one copied without the hint — otherwise "not
+recorded" may only mean the manager was not running. For Klipper:
+`busctl --user call org.kde.klipper /klipper org.kde.klipper.klipper
+getClipboardHistoryItem i 0`.
+
+---
+
 ## Verifying the permission rules
 
 The fifth check, and the most likely of them to have changed. Three properties

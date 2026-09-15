@@ -60,6 +60,8 @@ kleidos has KEY [KEY...]          exit 0 if every key exists; prints nothing
 kleidos set KEY [--stdin]         store a value
 kleidos get KEY [KEY...]          print values; terminal only
 kleidos reveal [-0] KEY [KEY...]  print values unconditionally
+kleidos copy KEY [--clear-after DURATION]
+                                  put a value on the clipboard; terminal only
 kleidos list [--names]            names, update times, fingerprints
 kleidos delete KEY                remove a key
 kleidos rename OLD NEW [--force]  rename, preserving the update time
@@ -129,6 +131,24 @@ order:
 ```bash
 kleidos reveal -0 DB_USER DB_PASSWORD
 ```
+
+### copy
+
+```bash
+kleidos copy DB_PASSWORD                     # pasteable for 45s
+kleidos copy DB_PASSWORD --clear-after 10s
+```
+
+Requires stderr to be a terminal, like `get`. Takes exactly one key. The value
+is copied byte-exact, with no newline added, and marked as a password so
+clipboard managers that honour the hint leave it out of their history.
+
+The clipboard is cleared at the deadline, or as soon as something else is
+copied. Until then a background `kleidos` process holds the value.
+
+Needs a Wayland compositor with data-control (KDE Plasma, Sway, Hyprland and
+other wlroots compositors) or an X11 display, including XWayland. Nothing else
+needs to be installed. Values over roughly 256 KiB are refused on X11.
 
 ### list
 
@@ -204,6 +224,7 @@ Add to `~/.claude/settings.json`:
   ],
   "ask": [
     "Bash(kleidos reveal:*)",
+    "Bash(kleidos copy:*)",
     "Bash(kleidos export:*)"
   ],
   "deny": [

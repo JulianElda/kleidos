@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"kleidos/internal/errs"
@@ -349,6 +351,97 @@ func TestGetPrintsWhenStderrIsATerminal(t *testing.T) {
 	}
 	if got, want := stdout.String(), testValue+"\n"; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+// TestCopyServerGetsTheValueOnStdin covers what copy's seams hide: that the
+// background half really is a separate process, in its own session, holding
+// the value without it ever appearing in its argv or environ -- and that the
+// parent waits for its verdict rather than reporting success on the spawn.
+//
+// The compositor here accepts the connection and never answers, which parks
+// the server mid-handshake for as long as the test needs. Its pid comes from
+// the socket's peer credentials, so there is no guessing which process it is.
+// Hanging up then fails the handshake, and with DISPLAY unset there is no
+// fallback, so the parent must exit with the server's error.
+func TestCopyServerGetsTheValueOnStdin(t *testing.T) {
+	c := seeded(t)
+	master, slave := openPTY(t)
+	go func() { _, _ = io.Copy(io.Discard, master) }()
+
+	socket := filepath.Join(t.TempDir(), "wayland-test")
+	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+
+	cmd := exec.Command(c.bin, "copy", testKey)
+	cmd.Env = append(os.Environ(), "KLEIDOS_DIR="+c.dir, "WAYLAND_DISPLAY="+socket, "DISPLAY=")
+	cmd.Stderr = slave
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+
+	_ = l.SetDeadline(time.Now().Add(10 * time.Second))
+	conn, err := l.AcceptUnix()
+	if err != nil {
+		t.Fatalf("the clipboard server never connected: %v", err)
+	}
+	raw, err := conn.SyscallConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cred *syscall.Ucred
+	if cerr := raw.Control(func(fd uintptr) {
+		cred, err = syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+	}); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := int(cred.Pid)
+	if server == cmd.Process.Pid {
+		t.Fatal("copy talked to the display server itself; nothing would outlive it")
+	}
+
+	proc := func(name string) string {
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/%s", server, name))
+		if err != nil {
+			t.Fatalf("reading the server's %s: %v", name, err)
+		}
+		return string(b)
+	}
+	if cmdline := proc("cmdline"); strings.Contains(cmdline, testValue) {
+		t.Errorf("the value reached the server's argv: %q", cmdline)
+	}
+	if strings.Contains(proc("environ"), testValue) {
+		t.Error("the value reached the server's environ")
+	}
+	// Field 6 of stat is the session; after the parenthesised command name it
+	// is the fourth. A session leader's session id is its own pid.
+	_, stat, _ := strings.Cut(proc("stat"), ") ")
+	if fields := strings.Fields(stat); len(fields) < 4 || fields[3] != fmt.Sprint(server) {
+		t.Errorf("the server is not in its own session: %q", stat)
+	}
+
+	select {
+	case <-exited:
+		t.Fatal("copy exited before the server reported")
+	default:
+	}
+	_ = conn.Close()
+
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("copy did not exit after the server failed")
+	}
+	if code := cmd.ProcessState.ExitCode(); code != errs.Generic {
+		t.Fatalf("exit %d after the server failed, want %d", code, errs.Generic)
 	}
 }
 
