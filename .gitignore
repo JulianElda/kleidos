@@ -1,0 +1,5 @@
+# direnv's cached dev shell; also the nix-direnv GC root.
+/.direnv/
+
+# nix build output symlink.
+/result
