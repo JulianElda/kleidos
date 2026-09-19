@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just --list)",
+      "Bash(just check)",
+      "Bash(just test)",
+      "Bash(just test *)",
+      "Bash(just fuzz)",
+      "Bash(just fuzz *)",
+      "Bash(just doctor)"
+    ]
+  }
+}
