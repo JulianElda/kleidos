@@ -168,7 +168,8 @@ loudly on:
   with `KLEIDOS_TEST_SCRATCH`. `t.TempDir()` is unusable for write-path tests.
 - **`dash` and `bash` must both exist and be different binaries.** `/bin/sh` is
   bash on Arch, so `shells()` resolves both by name and fails rather than
-  claiming two-shell coverage it does not have.
+  claiming two-shell coverage it does not have. On NixOS dash is not on the
+  system `PATH`; the flake devshell (`.envrc`) provides it.
 
 `KLEIDOS_DIR` is how tests reach a scratch vault; `cmd`'s `vaultDir(t)` sets it
 via `t.Setenv`, and `main_test.go` passes it to the child. Never run a test that
