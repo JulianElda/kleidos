@@ -33,8 +33,8 @@ import (
 //   - run's execve. Every test in cmd stubs it, so "the value lands in the
 //     child's environ, never in its argv" was asserted about a []string.
 //     Here a real child reads its own /proc entries.
-//   - get's terminal gate. isTerminal is a seam; the real check lived in
-//     docs/verifying.md as a manual one-liner. It is a test now.
+//   - get's terminal gate. isTerminal is a seam; the real check used to be a
+//     manual one-liner. It is a test now.
 //
 // Nothing here re-tests what the unit suites own. If a case can be written
 // against a function, it belongs there instead.
@@ -279,8 +279,8 @@ func TestRunFollowsTheShellConventionsForABadCommand(t *testing.T) {
 // entries, rather than in a captured argument to a stubbed execve.
 //
 // The mode asymmetry underneath it -- cmdline 0444, environ 0400 -- is a
-// kernel property, not kleidos's, and is re-checked by hand; see the first of
-// the one-liners in docs/verifying.md.
+// kernel property, not kleidos's, and is re-checked by hand: the first check in
+// `just doctor`.
 func TestRunPlacesTheValueInTheChildsEnvironNotItsArgv(t *testing.T) {
 	c := seeded(t)
 

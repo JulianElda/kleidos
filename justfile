@@ -1,8 +1,8 @@
 # kleidos development tasks.
 #
-# This file names commands; CLAUDE.md and docs/ hold the reasons. Keep it that
-# way. A recipe that restates rationale is a second copy of it, and the copy is
-# the one that goes stale, silently, with nothing failing when it does.
+# This file names commands and keeps the reasons out. A recipe that restates
+# rationale is a second copy of it, and the copy is the one that goes stale,
+# silently, with nothing failing when it does.
 
 # just's default shell is sh, and this repo cares that sh is dash on some
 # machines and bash on others -- shells() in the suite resolves both by name
@@ -32,12 +32,12 @@ fuzz TIME="60s":
     go test ./internal/cmd/ -run '^$' -fuzz FuzzShellQuote -fuzztime {{TIME}}
 
 # Deliberately not part of `check`: these are properties of the kernel and the
-# harness, not of kleidos, so a difference means the document needs updating
-# rather than that the code is broken. The one environment fact that does
-# invalidate a test -- a tmpfs scratch dir -- is enforced by the suite itself,
-# in internal/testenv. docs/verifying.md says how to read each line.
+# harness, not of kleidos, so a difference means the recorded findings need
+# updating rather than that the code is broken. The one environment fact that
+# does invalidate a test -- a tmpfs scratch dir -- is enforced by the suite
+# itself, in internal/testenv. Each check's heading line says what it guards.
 
-# Re-check the environment facts docs/findings.md rests on.
+# Re-check the environment facts the recorded findings rest on.
 doctor:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -97,8 +97,8 @@ doctor:
 
     echo
     if (( status == 0 )); then
-        echo "matches docs/findings.md"
+        echo "matches the recorded findings"
     else
-        echo "something differs from docs/findings.md -- trust this machine, fix the document"
+        echo "something differs from the recorded findings -- trust this machine, fix the record"
     fi
     exit $status

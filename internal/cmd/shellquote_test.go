@@ -181,8 +181,8 @@ var evalModes = []struct{ name, script string }{
 // no quoting: it is command substitution into a variable, and it corrupts the
 // value on its own.
 //
-// The consequence for callers is the same conclusion the handoff reaches for
-// trailing newlines by a different route: K=$(kleidos reveal FOO) is lossy, and
+// The consequence for callers is the same conclusion trailing newlines force by
+// a different route: K=$(kleidos reveal FOO) is lossy, and
 // `reveal -0` is the machine-readable path.
 func TestDashCorruptsHighBytesThroughCommandSubstitution(t *testing.T) {
 	// Through shells(), not LookPath: if "dash" were bash, the no-corruption

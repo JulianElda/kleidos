@@ -12,25 +12,17 @@ exit codes are load-bearing rather than cosmetic.
 ## Documents
 
 Root holds only `README.md` (usage, no references to anything) and this file.
-Everything else is in `docs/`:
+[docs/roadmap.md](docs/roadmap.md) holds the v1 non-goals and the deferred items
+in priority order; update it when scope moves.
 
-| File | Holds | Write here when |
-|---|---|---|
-| [docs/threat-model.md](docs/threat-model.md) | what the tool protects against and what it does not; where enforcement sits; known limits | the security story changes |
-| [docs/decisions.md](docs/decisions.md) | why the design is shaped this way, one section per decision, plus the write path | you make a non-obvious choice |
-| [docs/findings.md](docs/findings.md) | measured results and the environment they came from | you measure something |
-| [docs/verifying.md](docs/verifying.md) | the re-check procedures, including the permission-matcher method | a procedure changes |
-| [docs/roadmap.md](docs/roadmap.md) | v1 non-goals and deferred items in priority order | scope moves |
-
-**Read `docs/threat-model.md` first.** There is no boundary against an agent
-running as the user, and an early draft of the design claimed otherwise.
+**There is no boundary against an agent running as the user**, and an early
+draft of the design claimed otherwise.
 
 The README carries examples and constraints only — no rationale, no gotcha
-paragraphs, and no links to these files. Rationale goes in `docs/decisions.md`,
-measurements in `docs/findings.md`. Do not move prose back into the README.
+paragraphs, and no links. Do not move prose back into the README.
 
-A finding is only as good as its environment: if you add one, add or confirm the
-provenance table at the top of `docs/findings.md` in the same edit.
+A measurement is only as good as its environment: whenever you record one,
+record the machine, kernel, distro and tool versions it came from with it.
 
 ## Layout
 
@@ -110,8 +102,9 @@ deliberate decision, most of them tested directly.
   descriptors are non-TTY, so stderr is a terminal exactly when a human is. This
   keeps `get K > file` working while a captured call refuses.
 - **Exit codes stay at 120+.** Anything below 120 came from a `run` child,
-  unmodified. 126/127 follow the shell conventions. The table is in
-  [docs/decisions.md](docs/decisions.md#why-the-exit-codes-start-at-120).
+  unmodified. 126/127 follow the shell conventions. The codes are the
+  constants in `internal/errs/errs.go`; there is no headroom above 125, so a
+  new error class subdivides an existing code or falls back to 120.
 - **`[]byte` discipline stops at the edges.** `encoding/json` makes
   uncontrollable `string` copies; `zero()` in `set.go` is best-effort and
   labelled as such. Do not add zeroing that implies a guarantee it cannot give.
@@ -152,7 +145,7 @@ golangci-lint run          # .golangci.yml; v2 config
 
 The `justfile` names the composites, and only those: `just check` is the four
 above as one gate, `just fuzz` the `FuzzShellQuote` run, and `just doctor` the
-environment re-checks from [docs/verifying.md](docs/verifying.md). It carries no
+kernel and harness re-checks the design rests on. It carries no
 rationale and no per-package invocations -- this section stays the source for
 the first, and ad-hoc `go test` for the second.
 
@@ -201,8 +194,8 @@ Seams to use instead of refactoring for testability — all already in place:
 
 The clipboard tests never touch the real session: the fakes point
 `WAYLAND_DISPLAY` or `DISPLAY` at their own sockets and unset the other. What
-the fakes cannot prove — a real desktop's behavior — is the manual procedure in
-[docs/verifying.md](docs/verifying.md#verifying-the-clipboard).
+the fakes cannot prove — a real desktop's behavior — needs a manual check on a
+real desktop, against a scratch vault holding a dummy value.
 
 `TestBrokenLockActuallyLoses` is a control, not a feature test: it asserts the
 unlocked variant *does* lose writes, and fails if it does not. Should it start
