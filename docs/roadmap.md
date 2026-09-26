@@ -8,8 +8,7 @@ lock, no provider abstraction, no YubiKey-backed prod tier, no output masking in
 shell completions.
 
 The session lock is the only one of these that would produce an actual boundary,
-and it costs unattended operation to get it. See
-[threat-model.md](threat-model.md).
+and it costs unattended operation to get it.
 
 ---
 

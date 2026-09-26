@@ -123,19 +123,21 @@ func FuzzShellQuote(f *testing.F) {
 	})
 }
 
-// shells resolves dash and bash, and refuses to run if they turn out to be the
-// same binary.
+// shells resolves dash and bash, and fails if either is missing or they turn
+// out to be the same binary.
 //
 // /bin/sh is bash on this machine, so a suite that ran `sh` and then `bash`
 // would test bash twice and report a false pass on the one function where being
-// wrong is code execution.
+// wrong is code execution. A skip is no better: `go test` still prints ok, and
+// nothing shows the skip without -v.
 func shells(t *testing.T) map[string]string {
 	t.Helper()
 	found := map[string]string{}
 	for _, name := range []string{"dash", "bash"} {
 		path, err := exec.LookPath(name)
 		if err != nil {
-			t.Skipf("%s is not installed; refusing to claim two-shell coverage without it", name)
+			t.Fatalf("%s is not on PATH; refusing to claim two-shell coverage without it "+
+				"(the flake devshell provides both: nix develop)", name)
 		}
 		found[name] = path
 	}
@@ -179,18 +181,14 @@ var evalModes = []struct{ name, script string }{
 // no quoting: it is command substitution into a variable, and it corrupts the
 // value on its own.
 //
-// The consequence for callers is the same conclusion the handoff reaches for
-// trailing newlines by a different route: K=$(kleidos reveal FOO) is lossy, and
+// The consequence for callers is the same conclusion trailing newlines force by
+// a different route: K=$(kleidos reveal FOO) is lossy, and
 // `reveal -0` is the machine-readable path.
 func TestDashCorruptsHighBytesThroughCommandSubstitution(t *testing.T) {
-	dash, err := exec.LookPath("dash")
-	if err != nil {
-		t.Skip("dash is not installed")
-	}
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash is not installed")
-	}
+	// Through shells(), not LookPath: if "dash" were bash, the no-corruption
+	// branch below would skip with a false "dash was fixed".
+	found := shells(t)
+	dash, bash := found["dash"], found["bash"]
 
 	// 0xc2 0x82 is U+0082; the trailing byte is the one dash escapes.
 	const script = "s=$(printf \"a\u0082b\"); printf %s \"$s\""
